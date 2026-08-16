@@ -281,12 +281,44 @@ function escapeHtml(str) {
   return div.innerHTML;
 }
 
+const CHAT_HISTORY_KEY = 'pokebot_chat_history';
+
+function saveChatHistory() {
+  const messages = Array.from(chatLog.children).map(el => ({
+    text: el.textContent,
+    cls: el.className.replace('msg ', ''),
+  })).filter(m => m.text !== '...');
+  try {
+    localStorage.setItem(CHAT_HISTORY_KEY, JSON.stringify(messages.slice(-50)));
+  } catch (e) { /* stockage indisponible, on continue sans persister */ }
+}
+
+function loadChatHistory() {
+  try {
+    const raw = localStorage.getItem(CHAT_HISTORY_KEY);
+    if (!raw) return false;
+    const messages = JSON.parse(raw);
+    if (!messages.length) return false;
+    messages.forEach(m => {
+      const div = document.createElement('div');
+      div.className = 'msg ' + m.cls;
+      div.textContent = m.text;
+      chatLog.appendChild(div);
+    });
+    chatLog.scrollTop = chatLog.scrollHeight;
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
 function addMessage(text, cls) {
   const div = document.createElement('div');
   div.className = 'msg ' + cls;
   div.textContent = text;
   chatLog.appendChild(div);
   chatLog.scrollTop = chatLog.scrollHeight;
+  saveChatHistory();
   return div;
 }
 
@@ -454,7 +486,7 @@ async function loadAll() {
   renderDeals(dealsRes);
 }
 
-if (chatLog.children.length === 0) {
+if (!loadChatHistory()) {
   addMessage('Écris par exemple : "cherche des Dracaufeu PSA 9 ou 10 sous 200€"', 'system');
 }
 renderStatus();
