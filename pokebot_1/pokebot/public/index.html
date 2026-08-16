@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<title>PokeBot — Veille cartes gradées</title>
+<style>
+  :root {
+    --bg: #0e1116;
+    --panel: #161b22;
+    --panel-2: #1c2230;
+    --border: #2a3140;
+    --text: #e8ecf1;
+    --muted: #8993a4;
+    --holo-a: #7c5cff;
+    --holo-b: #33c9c9;
+    --holo-c: #ff5cad;
+    --gold: #e8b64c;
+    --good: #3ecf8e;
+    --bad: #ff6b6b;
+    --font-display: 'Georgia', 'Iowan Old Style', serif;
+    --font-body: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --font-mono: 'SF Mono', 'Consolas', monospace;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-body);
+    min-height: 100vh;
+    min-height: 100dvh;
+  }
+  .holo-bar {
+    height: 4px;
+    background: linear-gradient(90deg, var(--holo-a), var(--holo-b), var(--holo-c), var(--gold), var(--holo-a));
+    background-size: 300% 100%;
+    animation: shimmer 6s linear infinite;
+  }
+  @keyframes shimmer { to { background-position: 300% 0; } }
+
+  header {
+    padding: 22px 24px 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  header h1 {
+    font-family: var(--font-display);
+    font-size: 26px;
+    margin: 0 0 4px;
+    letter-spacing: 0.3px;
+  }
+  header p { margin: 0 0 14px; color: var(--muted); font-size: 13.5px; }
+
+  .status-row { display: flex; flex-wrap: wrap; gap: 8px; }
+  .status-pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 11.5px; font-family: var(--font-mono);
+    padding: 4px 10px; border-radius: 20px;
+    background: var(--panel-2); border: 1px solid var(--border);
+    color: var(--muted);
+  }
+  .status-pill .led { width: 7px; height: 7px; border-radius: 50%; background: var(--bad); flex-shrink: 0; }
+  .status-pill.on { color: var(--text); }
+  .status-pill.on .led { background: var(--good); }
+
+  .layout {
+    display: grid;
+    grid-template-columns: 1fr 380px;
+    gap: 18px;
+    padding: 20px 24px 24px;
+    max-width: 1400px;
+    margin: 0 auto;
+  }
+  @media (max-width: 900px) {
+    .layout { grid-template-columns: 1fr; padding: 14px 12px 12px; gap: 14px; }
+    header { padding: 16px 16px 12px; }
+    header h1 { font-size: 22px; }
+  }
+
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+  .panel-header {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    font-size: 11.5px;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    color: var(--muted);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-shrink: 0;
+  }
+  .badge {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 20px;
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+  }
+  .icon-btn {
+    background: none; border: 1px solid var(--border); color: var(--muted);
+    border-radius: 6px; font-size: 11px; padding: 4px 9px; cursor: pointer;
+    font-family: var(--font-body);
+  }
+  .icon-btn:hover { color: var(--text); border-color: var(--holo-b); }
+  .icon-btn:active { transform: scale(0.97); }
+
+  /* CHAT */
+  #chat-panel { min-height: 480px; }
+  #chat-log {
+    flex: 1;
+    min-height: 320px;
+    max-height: 55vh;
+    overflow-y: auto;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .msg { max-width: 88%; padding: 10px 14px; border-radius: 12px; font-size: 14px; line-height: 1.45; white-space: pre-wrap; }
+  .msg.user { align-self: flex-end; background: var(--holo-a); color: white; border-bottom-right-radius: 3px; }
+  .msg.bot { align-self: flex-start; background: var(--panel-2); border: 1px solid var(--border); border-bottom-left-radius: 3px; }
+  .msg.error { align-self: flex-start; background: rgba(255,107,107,0.12); border: 1px solid rgba(255,107,107,0.4); color: #ffb4b4; }
+  .msg.system { align-self: center; color: var(--muted); font-size: 12px; font-style: italic; text-align: center; max-width: 100%; }
+  .suggestions { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 16px 12px; flex-shrink: 0; }
+  .suggestion-chip {
+    font-size: 12px; padding: 6px 12px; border-radius: 20px;
+    background: var(--panel-2); border: 1px solid var(--border); color: var(--muted);
+    cursor: pointer; white-space: nowrap;
+  }
+  .suggestion-chip:hover { border-color: var(--holo-b); color: var(--text); }
+
+  #chat-form { display: flex; border-top: 1px solid var(--border); flex-shrink: 0; }
+  #chat-input {
+    flex: 1; background: transparent; border: none; color: var(--text);
+    padding: 16px 18px; font-size: 16px; outline: none; font-family: var(--font-body);
+    min-width: 0;
+  }
+  #chat-form button {
+    background: var(--holo-a); color: white; border: none; padding: 0 24px;
+    font-weight: 600; cursor: pointer; font-size: 14px; flex-shrink: 0;
+  }
+  #chat-form button:active { background: #6b4de8; }
+  #chat-form button:disabled { opacity: 0.5; }
+
+  /* WATCHES */
+  .watch-item {
+    padding: 12px 16px; border-bottom: 1px solid var(--border);
+    font-size: 13px; display: flex; justify-content: space-between; align-items: center; gap: 10px;
+  }
+  .watch-item:last-child { border-bottom: none; }
+  .watch-name { font-weight: 600; }
+  .watch-meta { color: var(--muted); font-size: 11.5px; margin-top: 2px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--good); flex-shrink: 0; }
+  .dot.paused { background: var(--muted); }
+
+  /* DEALS */
+  .deal-card { padding: 12px 16px; border-bottom: 1px solid var(--border); display: flex; gap: 12px; }
+  .deal-card:last-child { border-bottom: none; }
+  .deal-thumb {
+    width: 64px; height: 64px; border-radius: 8px; object-fit: cover; flex-shrink: 0;
+    background: var(--panel-2); border: 1px solid var(--border);
+  }
+  .deal-thumb-placeholder {
+    width: 64px; height: 64px; border-radius: 8px; flex-shrink: 0;
+    background: var(--panel-2); border: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: center;
+    color: var(--muted); font-size: 10px; text-align: center;
+  }
+  .deal-body { min-width: 0; flex: 1; }
+  .deal-title { font-size: 13.5px; font-weight: 600; margin-bottom: 6px; line-height: 1.3; }
+  .deal-stats { display: flex; gap: 12px; flex-wrap: wrap; font-size: 11.5px; font-family: var(--font-mono); color: var(--muted); margin-bottom: 6px; }
+  .deal-stats .discount { color: var(--good); font-weight: 700; }
+  .deal-link {
+    display: inline-flex; align-items: center; gap: 4px;
+    color: var(--holo-b); text-decoration: none; font-size: 12.5px; font-weight: 600;
+  }
+  .deal-link:hover { text-decoration: underline; }
+  .empty-state { padding: 36px 16px; text-align: center; color: var(--muted); font-size: 12.5px; line-height: 1.5; }
+  .side-col { display: flex; flex-direction: column; gap: 16px; }
+
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+</style>
+</head>
+<body>
+  <div class="holo-bar"></div>
+  <header>
+    <h1>PokeBot</h1>
+    <p>Veille et analyse de rentabilité de cartes Pokémon gradées sur eBay — pilotage en langage naturel</p>
+    <div class="status-row" id="status-row"></div>
+  </header>
+
+  <div class="layout">
+    <div class="panel" id="chat-panel">
+      <div class="panel-header">
+        <span>Assistant</span>
+        <span class="badge" id="watch-count">0 veille(s)</span>
+      </div>
+      <div id="chat-log"></div>
+      <div class="suggestions" id="suggestions">
+        <div class="suggestion-chip" data-text="Cherche des Dracaufeu PSA 9 ou 10 sous 200€">Dracaufeu PSA 9-10 &lt; 200€</div>
+        <div class="suggestion-chip" data-text="Montre-moi mes veilles">Mes veilles</div>
+        <div class="suggestion-chip" data-text="Baisse le seuil global à 15%">Seuil à 15%</div>
+      </div>
+      <form id="chat-form">
+        <input id="chat-input" type="text" placeholder="Écris ta demande ici..." autocomplete="off" />
+        <button type="submit" id="chat-send">Envoyer</button>
+      </form>
+    </div>
+
+    <div class="side-col">
+      <div class="panel">
+        <div class="panel-header">
+          <span>Veilles actives</span>
+          <button class="icon-btn" id="scan-now-btn">Scanner maintenant</button>
+        </div>
+        <div id="watches-list"><div class="empty-state">Aucune veille pour le moment.<br>Écris une demande dans l'assistant pour en créer une.</div></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header">
+          <span>Affaires détectées</span>
+          <span class="badge" id="deal-count">0</span>
+        </div>
+        <div id="deals-list"><div class="empty-state">Rien pour l'instant. Le bot scanne périodiquement.</div></div>
+      </div>
+    </div>
+  </div>
+
+<script>
+const chatLog = document.getElementById('chat-log');
+const chatForm = document.getElementById('chat-form');
+const chatInput = document.getElementById('chat-input');
+const chatSend = document.getElementById('chat-send');
+
+function addMessage(text, cls) {
+  const div = document.createElement('div');
+  div.className = 'msg ' + cls;
+  div.textContent = text;
+  chatLog.appendChild(div);
+  chatLog.scrollTop = chatLog.scrollHeight;
+  return div;
+}
+
+async function sendMessage(text) {
+  addMessage(text, 'user');
+  chatSend.disabled = true;
+  const thinking = addMessage('...', 'bot');
+  try {
+    const res = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: text }),
+    });
+    const data = await res.json();
+    thinking.remove();
+    if (data.error) {
+      addMessage(data.error, 'error');
+    } else {
+      addMessage(data.reply, 'bot');
+      renderWatches(data.watches || []);
+    }
+  } catch (e) {
+    thinking.remove();
+    addMessage("Impossible de contacter le serveur. Vérifie que le bot est bien démarré.", 'error');
+  } finally {
+    chatSend.disabled = false;
+  }
+}
+
+chatForm.addEventListener('submit', (e) => {
+  e.preventDefault();
+  const text = chatInput.value.trim();
+  if (!text) return;
+  chatInput.value = '';
+  sendMessage(text);
+});
+
+document.querySelectorAll('.suggestion-chip').forEach((chip) => {
+  chip.addEventListener('click', () => sendMessage(chip.dataset.text));
+});
+
+document.getElementById('scan-now-btn').addEventListener('click', async (e) => {
+  const btn = e.currentTarget;
+  const original = btn.textContent;
+  btn.textContent = 'Scan en cours...';
+  btn.disabled = true;
+  try {
+    await fetch('/api/scan-now', { method: 'POST' });
+    addMessage('Scan manuel terminé, vérifie les affaires détectées.', 'system');
+    await loadInitial();
+  } catch (e) {
+    addMessage("Le scan manuel a échoué.", 'error');
+  } finally {
+    btn.textContent = original;
+    btn.disabled = false;
+  }
+});
+
+function renderWatches(watches) {
+  document.getElementById('watch-count').textContent = watches.length + ' veille(s)';
+  const list = document.getElementById('watches-list');
+  if (!watches.length) {
+    list.innerHTML = '<div class="empty-state">Aucune veille pour le moment.<br>Écris une demande dans l\'assistant pour en créer une.</div>';
+    return;
+  }
+  list.innerHTML = watches.map(w => `
+    <div class="watch-item">
+      <div>
+        <div class="watch-name">${w.cardName ? escapeHtml(w.cardName) : 'Toutes cartes gradées'}${w.grader ? ' · ' + escapeHtml(w.grader) : ''}${w.grade ? ' ' + escapeHtml(w.grade) : ''}</div>
+        <div class="watch-meta">${w.maxPrice ? 'Budget max ' + w.maxPrice + ' €' : 'Sans budget max'}</div>
+      </div>
+      <div class="dot ${w.active ? '' : 'paused'}" title="${w.active ? 'Active' : 'En pause'}"></div>
+    </div>
+  `).join('');
+}
+
+function renderDeals(deals) {
+  document.getElementById('deal-count').textContent = deals.length;
+  const list = document.getElementById('deals-list');
+  if (!deals.length) {
+    list.innerHTML = '<div class="empty-state">Rien pour l\'instant. Le bot scanne périodiquement.</div>';
+    return;
+  }
+  list.innerHTML = deals.map(d => `
+    <div class="deal-card">
+      ${d.listing.imageUrl
+        ? `<img class="deal-thumb" src="${escapeHtml(d.listing.imageUrl)}" alt="" loading="lazy" onerror="this.replaceWith(Object.assign(document.createElement('div'), {className:'deal-thumb-placeholder', textContent:'Pas de photo'}))" />`
+        : `<div class="deal-thumb-placeholder">Pas de photo</div>`
+      }
+      <div class="deal-body">
+        <div class="deal-title">${escapeHtml(d.listing.title)}</div>
+        <div class="deal-stats">
+          <span>Prix: ${d.evaluation.totalCost} €</span>
+          <span>Marché: ${d.evaluation.marketPrice} €</span>
+          <span class="discount">-${d.evaluation.discountPercent}%</span>
+          <span>ROI ${d.evaluation.roiPercent}%</span>
+        </div>
+        <a class="deal-link" href="${escapeHtml(d.listing.url)}" target="_blank" rel="noopener">Voir l'annonce sur eBay →</a>
+      </div>
+    </div>
+  `).join('');
+}
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str == null ? '' : String(str);
+  return div.innerHTML;
+}
+
+async function renderStatus() {
+  const row = document.getElementById('status-row');
+  try {
+    const status = await fetch('/api/status').then(r => r.json());
+    const pills = [
+      { key: 'ebayConfigured', label: 'eBay' },
+      { key: 'anthropicConfigured', label: 'Assistant IA' },
+      { key: 'emailConfigured', label: 'Email' },
+      { key: 'telegramConfigured', label: 'Telegram' },
+    ];
+    row.innerHTML = pills.map(p => `
+      <span class="status-pill ${status[p.key] ? 'on' : ''}">
+        <span class="led"></span>${p.label}
+      </span>
+    `).join('');
+    if (status.lastScanError) {
+      row.innerHTML += `<span class="status-pill" style="color:#ffb4b4; border-color: rgba(255,107,107,0.4);">⚠ ${escapeHtml(status.lastScanError)}</span>`;
+    }
+    if (!status.ebayConfigured || !status.anthropicConfigured) {
+      const chatEmpty = chatLog.children.length === 0;
+      if (chatEmpty) {
+        addMessage(
+          "Le bot n'est pas encore complètement configuré (regarde les pastilles ci-dessus). "
+          + "Tu peux quand même créer des veilles, elles seront scannées dès que les clés seront ajoutées.",
+          'system'
+        );
+      }
+    }
+  } catch (e) {
+    row.innerHTML = '<span class="status-pill">Statut indisponible</span>';
+  }
+}
+
+async function loadInitial() {
+  const [watchesRes, dealsRes] = await Promise.all([
+    fetch('/api/watches').then(r => r.json()).catch(() => []),
+    fetch('/api/deals').then(r => r.json()).catch(() => []),
+  ]);
+  renderWatches(watchesRes);
+  renderDeals(dealsRes);
+}
+
+if (chatLog.children.length === 0) {
+  addMessage('Écris par exemple : "cherche des Dracaufeu PSA 9 ou 10 sous 200€"', 'system');
+}
+renderStatus();
+loadInitial();
+setInterval(loadInitial, 30000);
+setInterval(renderStatus, 60000);
+</script>
+</body>
+</html>

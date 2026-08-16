@@ -1,0 +1,105 @@
+// Acces a l'API officielle eBay (Browse API).
+// Doc: https://developer.ebay.com/api-docs/buy/browse/overview.html
+const fetch = require('node-fetch');
+
+let cachedToken = null;
+let tokenExpiresAt = 0;
+
+const EBAY_ENV = 'https://api.ebay.com'; // production
+
+async function getAccessToken() {
+  if (cachedToken && Date.now() < tokenExpiresAt - 60000) {
+    return cachedToken;
+  }
+  const clientId = process.env.EBAY_CLIENT_ID;
+  const clientSecret = process.env.EBAY_CLIENT_SECRET;
+  if (!clientId || !clientSecret) {
+    throw new Error('EBAY_CLIENT_ID / EBAY_CLIENT_SECRET manquants dans les variables d\'environnement.');
+  }
+  const basicAuth = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
+
+  const res = await fetch(`${EBAY_ENV}/identity/v1/oauth2/token`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      Authorization: `Basic ${basicAuth}`,
+    },
+    body: new URLSearchParams({
+      grant_type: 'client_credentials',
+      scope: 'https://api.ebay.com/oauth/api_scope',
+    }),
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Echec authentification eBay (${res.status}): ${text}`);
+  }
+
+  const json = await res.json();
+  cachedToken = json.access_token;
+  tokenExpiresAt = Date.now() + json.expires_in * 1000;
+  return cachedToken;
+}
+
+// Construit la requete de recherche a partir des criteres d'une "watch".
+// Si aucun nom de carte n'est donne, on scanne TOUTES les cartes gradees Pokemon
+// (mode "chasse aux pepites" : on compte sur le calcul de rentabilite pour filtrer,
+// pas sur un nom precis).
+function buildQuery(watch) {
+  const parts = [watch.cardName, watch.setName, watch.grader, watch.grade ? `${watch.grade}` : null]
+    .filter(Boolean);
+  if (!watch.cardName && !watch.setName) parts.push('pokemon');
+  if (!watch.grader) parts.push('graded');
+  return parts.join(' ');
+}
+
+async function searchActiveListings(watch, { limit = 50 } = {}) {
+  const token = await getAccessToken();
+  const query = buildQuery(watch);
+
+  const params = new URLSearchParams({
+    q: query,
+    category_ids: '183454', // categorie eBay "Trading Card Games > Pokemon" gradees (a ajuster si besoin)
+    limit: String(limit),
+    sort: 'price',
+  });
+
+  const filters = [];
+  if (watch.maxPrice) filters.push(`price:[..${watch.maxPrice}]`);
+  filters.push('priceCurrency:EUR');
+  filters.push('buyingOptions:{FIXED_PRICE|AUCTION}');
+  if (filters.length) params.set('filter', filters.join(','));
+
+  const marketplace = process.env.EBAY_MARKETPLACE || 'EBAY_FR';
+
+  const res = await fetch(`${EBAY_ENV}/buy/browse/v1/item_summary/search?${params.toString()}`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'X-EBAY-C-MARKETPLACE-ID': marketplace,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Erreur recherche eBay (${res.status}): ${text}`);
+  }
+
+  const json = await res.json();
+  return (json.itemSummaries || []).map((item) => ({
+    listingId: item.itemId,
+    title: item.title,
+    price: item.price ? parseFloat(item.price.value) : null,
+    currency: item.price ? item.price.currency : 'EUR',
+    url: item.itemWebUrl,
+    imageUrl: item.image ? item.image.imageUrl : null,
+    condition: item.condition,
+    shippingCost: item.shippingOptions && item.shippingOptions[0]
+      ? parseFloat(item.shippingOptions[0].shippingCost?.value || 0)
+      : 0,
+    seller: item.seller ? item.seller.username : null,
+    buyingOptions: item.buyingOptions,
+  }));
+}
+
+module.exports = { getAccessToken, searchActiveListings, buildQuery };

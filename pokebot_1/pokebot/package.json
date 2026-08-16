@@ -1,0 +1,21 @@
+{
+  "name": "pokebot-cartes-gradees",
+  "version": "1.0.0",
+  "description": "Bot de veille et d'analyse de rentabilite pour cartes Pokemon gradees sur eBay, pilotable en langage naturel.",
+  "main": "src/server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node src/server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "node-cron": "^3.0.3",
+    "lowdb": "^1.0.0",
+    "nodemailer": "^6.9.14",
+    "node-telegram-bot-api": "^0.66.0",
+    "node-fetch": "^2.7.0",
+    "dotenv": "^16.4.5",
+    "uuid": "^9.0.1"
+  }
+}
