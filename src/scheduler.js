@@ -28,16 +28,22 @@ async function scanWatch(watch) {
     const groupsWithPrice = [...marketPrices.values()].filter(v => v.marketPrice !== null).length;
     console.log(`[SCAN] -> ${groupsWithPrice}/${listings.length} annonce(s) avaient assez de comparables pour etre evaluees`);
 
+    let bestDiscount = null;
+
     for (const listing of listings) {
       if (!listing.price) continue;
-      if (storage.hasSeenListing(listing.listingId)) continue;
-      storage.markListingSeen(listing.listingId);
+      // On ne marque "vu" que les annonces qui ONT declenche une alerte (pour ne pas
+      // re-alerter deux fois sur la meme affaire). Les annonces qui n'etaient pas des
+      // affaires restent re-evaluables aux scans suivants, notamment si le seuil change.
+      const alreadyAlerted = storage.hasSeenListing(listing.listingId);
 
       const ref = marketPrices.get(listing.listingId);
       if (!ref || ref.marketPrice === null) continue; // pas assez de comparables, on ne devine pas
 
       const evaluation = evaluateListing(listing, ref.marketPrice, threshold);
-      if (evaluation.isDeal) {
+      if (bestDiscount === null || evaluation.discountPercent > bestDiscount) bestDiscount = evaluation.discountPercent;
+      if (evaluation.isDeal && !alreadyAlerted) {
+        storage.markListingSeen(listing.listingId);
         const deal = storage.addDeal({
           watchId: watch.id,
           listing,
@@ -48,6 +54,7 @@ async function scanWatch(watch) {
         console.log(`[DEAL] ${listing.title} -> ${evaluation.discountPercent}% sous le marche (echantillon: ${ref.sampleSize})`);
       }
     }
+    console.log(`[SCAN] -> meilleure decote trouvee ce scan : ${bestDiscount !== null ? bestDiscount + '%' : 'aucune (0 annonce evaluable)'} (seuil requis: ${threshold}%)`);
   } catch (err) {
     console.error(`Erreur lors du scan de la veille "${watch.cardName || 'toutes cartes'}":`, err.message);
     throw err;
