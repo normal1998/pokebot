@@ -7,7 +7,13 @@ const { startScheduler, scanAllWatches } = require('./scheduler');
 
 const app = express();
 app.use(express.json());
-app.use(express.static(path.join(__dirname, '..', 'public')));
+app.use(express.static(path.join(__dirname, '..', 'public'), {
+  setHeaders: (res) => {
+    // Empeche le navigateur de garder une vieille version de l'interface en cache,
+    // ce qui a cause plusieurs faux "bugs" pendant le developpement.
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+  },
+}));
 
 function findWatchByDescription(desc) {
   const watches = storage.listWatches();
@@ -22,6 +28,12 @@ function findWatchByDescription(desc) {
 
 app.get('/api/watches', (req, res) => {
   res.json(storage.listWatches());
+});
+
+// Suppression directe d'une veille depuis l'interface (bouton, pas besoin de passer par le chat)
+app.delete('/api/watches/:id', (req, res) => {
+  storage.removeWatch(req.params.id);
+  res.json({ ok: true, watches: storage.listWatches() });
 });
 
 // Etat de sante du bot : quelles cles sont configurees, dernier scan, etc.
