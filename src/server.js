@@ -87,7 +87,8 @@ app.post('/api/chat', async (req, res) => {
         if (existing) {
           if (!existing.active) storage.setWatchActive(existing.id, true);
           if (input.maxPrice) storage.updateWatch(existing.id, { maxPrice: input.maxPrice });
-          reply = `Cette veille existe deja (${existing.cardName || 'toutes cartes gradees'}${existing.grader ? ' ' + existing.grader : ''}) — je l'ai reactivee${input.maxPrice ? ' et mis a jour le budget' : ''} plutot que d'en creer une en double.`;
+          if (input.thresholdPercent) storage.updateWatch(existing.id, { thresholdPercent: input.thresholdPercent });
+          reply = `Cette veille existe deja (${existing.cardName || 'toutes cartes gradees'}${existing.grader ? ' ' + existing.grader : ''}) — je l'ai reactivee${input.maxPrice ? ' et mis a jour le budget' : ''}${input.thresholdPercent ? ' (seuil ' + input.thresholdPercent + '%)' : ''} plutot que d'en creer une en double.`;
           break;
         }
 
@@ -97,15 +98,17 @@ app.post('/api/chat', async (req, res) => {
           grader: input.grader || null,
           grade: input.grade || null,
           maxPrice: input.maxPrice || null,
-          thresholdPercent: null,
+          thresholdPercent: input.thresholdPercent || null,
         });
         reply = watch.cardName
           ? `Nouvelle veille ajoutee : ${watch.cardName}`
             + `${watch.grader ? ' ' + watch.grader : ''}${watch.grade ? ' ' + watch.grade : ''}`
-            + `${watch.maxPrice ? ', budget max ' + watch.maxPrice + ' EUR' : ''}.`
+            + `${watch.maxPrice ? ', budget max ' + watch.maxPrice + ' EUR' : ''}`
+            + `${watch.thresholdPercent ? ', seuil ' + watch.thresholdPercent + '%' : ''}.`
           : `Veille large ajoutee : toutes les cartes Pokemon gradees`
             + `${watch.grader ? ' ' + watch.grader : ''}${watch.grade ? ' ' + watch.grade : ''}`
-            + `${watch.maxPrice ? ', budget max ' + watch.maxPrice + ' EUR' : ''}. `
+            + `${watch.maxPrice ? ', budget max ' + watch.maxPrice + ' EUR' : ''}`
+            + `${watch.thresholdPercent ? ', seuil ' + watch.thresholdPercent + '%' : ''}. `
             + `Le bot compare chaque carte a des cartes similaires (jamais a une carte differente) avant de l'evaluer.`;
         break;
       }

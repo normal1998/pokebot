@@ -17,6 +17,7 @@ const TOOLS = [
         grader: { type: 'string', description: "Organisme de gradation: PSA, BGS, CGC, ACE, SGC, ou vide si indifferent" },
         grade: { type: 'string', description: "Note minimale ou exacte recherchee, ex: '9', '10', '9-10'" },
         maxPrice: { type: 'number', description: "Budget maximum en euros, 0 si non precise" },
+        thresholdPercent: { type: 'number', description: "Seuil de decote (%) sous le prix marche pour declencher une alerte SI l'utilisateur en precise un dans sa demande (ex: 'decote d'au moins 5%', 'seuil a 10%'). Laisser vide/absent si non precise, le seuil par defaut sera utilise." },
       },
       required: [],
     },
