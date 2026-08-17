@@ -72,6 +72,18 @@ function detectGrade(title, grader) {
   return null;
 }
 
+// eBay renvoie parfois le nom complet du grader (ex: "Professional Sports Authenticator (PSA)")
+// au lieu du sigle. On normalise vers le sigle court utilise partout ailleurs dans le bot.
+function normalizeGraderName(name) {
+  const n = (name || '').toLowerCase();
+  if (n.includes('psa') || n.includes('professional sports authenticator')) return 'PSA';
+  if (n.includes('bgs') || n.includes('beckett')) return 'BGS';
+  if (n.includes('cgc')) return 'CGC';
+  if (n.includes('sgc')) return 'SGC';
+  if (n.includes('ace')) return 'ACE';
+  return name;
+}
+
 const STOPWORDS = new Set([
   'pokemon', 'card', 'carte', 'graded', 'gradee', 'tcg',
   'the', 'a', 'de', 'la', 'le', 'des', 'et', 'holo', 'holographic', 'mint', 'near', 'gem', 'nm',
@@ -104,8 +116,10 @@ function getGroupedMarketPrices(listings, { minSampleSize = 3, similarityThresho
   const withWords = listings
     .filter((l) => typeof l.price === 'number' && l.price > 0)
     .map((l) => {
-      const grader = detectGrader(l.title);
-      const grade = detectGrade(l.title, grader);
+      // Priorite aux donnees officielles eBay (conditionDescriptors), bien plus fiables
+      // que la detection par regex dans le titre, utilisee seulement en secours.
+      const grader = l.officialGrader ? normalizeGraderName(l.officialGrader) : detectGrader(l.title);
+      const grade = l.officialGrade || detectGrade(l.title, grader);
       return { listing: l, words: significantWords(l.title), grader, grade };
     });
 
@@ -158,4 +172,4 @@ function getGroupedMarketPrices(listings, { minSampleSize = 3, similarityThresho
   return result;
 }
 
-module.exports = { getMarketPriceFromListings, getGroupedMarketPrices, significantWords, jaccardSimilarity, detectGrader, detectGrade };
+module.exports = { getMarketPriceFromListings, getGroupedMarketPrices, significantWords, jaccardSimilarity, detectGrader, detectGrade, normalizeGraderName };

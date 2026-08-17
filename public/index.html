@@ -183,6 +183,13 @@
   .deal-stats .discount { color: var(--good); font-weight: 700; }
   .deal-link { display: inline-flex; align-items: center; gap: 4px; color: var(--gold); text-decoration: none; font-size: 12px; font-weight: 600; }
   .deal-link:hover { text-decoration: underline; }
+  .auction-badge {
+    display: inline-block; background: var(--holo-c); color: #1A1611; font-family: var(--font-display);
+    font-size: 9.5px; font-weight: 700; letter-spacing: 0.5px; padding: 1px 6px; border-radius: 3px;
+    vertical-align: middle; margin-right: 4px;
+  }
+  .max-bid-line { font-size: 11px; color: var(--holo-c); margin-bottom: 8px; }
+  .max-bid-line b { font-weight: 700; }
 
   /* Filtre par veille */
   .deal-filter { display: flex; flex-wrap: wrap; gap: 6px; padding: 12px 16px; border-bottom: 1px solid var(--border); }
@@ -262,17 +269,6 @@
     </div>
   </header>
 
-  <div class="deals-full-panel-wrap">
-    <div class="panel deals-full-panel">
-      <div class="panel-header">
-        <span>Affaires détectées</span>
-        <span class="badge" id="deal-count">0</span>
-      </div>
-      <div class="deal-filter" id="deal-filter"></div>
-      <div id="deals-list" class="deals-grid"></div>
-    </div>
-  </div>
-
   <div class="layout">
     <div class="panel" id="chat-panel">
       <div class="panel-header">
@@ -315,6 +311,18 @@
       </div>
     </div>
   </div>
+
+  <div class="deals-full-panel-wrap">
+    <div class="panel deals-full-panel">
+      <div class="panel-header">
+        <span>Affaires détectées</span>
+        <span class="badge" id="deal-count">0</span>
+      </div>
+      <div class="deal-filter" id="deal-filter"></div>
+      <div id="deals-list" class="deals-grid"></div>
+    </div>
+  </div>
+
 
 <script>
 const chatLog = document.getElementById('chat-log');
@@ -385,7 +393,8 @@ async function sendMessage(text) {
       addMessage(data.error, 'error');
     } else {
       addMessage(data.reply, 'bot');
-      renderWatches(data.watches || []);
+      allWatches = data.watches || [];
+      renderWatches(allWatches);
     }
   } catch (e) {
     thinking.remove();
@@ -466,7 +475,8 @@ function renderWatches(watches) {
       try {
         const res = await fetch('/api/watches/' + btn.dataset.id, { method: 'DELETE' });
         const data = await res.json();
-        renderWatches(data.watches || []);
+        allWatches = data.watches || [];
+        renderWatches(allWatches);
       } catch (e) {
         btn.disabled = false;
       }
@@ -481,13 +491,19 @@ const emptyDealsSvg = `<svg width="52" height="40" viewBox="0 0 52 40" fill="non
 </svg>`;
 
 let allDeals = [];
+let allWatches = [];
 let activeFilter = 'all';
+
+function watchLabelFor(watchId, fallback) {
+  const w = allWatches.find(x => x.id === watchId);
+  if (!w) return fallback || 'Veille';
+  return (w.cardName || 'Toutes cartes gradées') + (w.grader ? ' ' + w.grader : '') + (w.grade ? ' ' + w.grade : '');
+}
 
 function renderDealFilter(deals) {
   const filterEl = document.getElementById('deal-filter');
-  // Construit la liste des veilles distinctes presentes dans les affaires trouvees
-  const labels = new Map(); // watchId -> label
-  deals.forEach(d => { if (d.watchId) labels.set(d.watchId, d.watchLabel || 'Veille'); });
+  const labels = new Map();
+  deals.forEach(d => { if (d.watchId) labels.set(d.watchId, watchLabelFor(d.watchId, d.watchLabel)); });
 
   if (labels.size <= 1) { filterEl.innerHTML = ''; filterEl.style.display = 'none'; return; }
   filterEl.style.display = 'flex';
@@ -527,12 +543,13 @@ function renderDeals(deals) {
         : `<div class="deal-thumb-placeholder">Pas de<br>photo</div>`
       }
       <div class="deal-body">
-        <div class="deal-title">${escapeHtml(d.listing.title)}</div>
+        <div class="deal-title">${d.isAuction ? '<span class="auction-badge">ENCHÈRE</span> ' : ''}${escapeHtml(d.listing.title)}</div>
         <div class="deal-stats">
           <span>${d.evaluation.totalCost} €</span>
           <span>marché ${d.evaluation.marketPrice} €</span>
           <span class="discount">-${d.evaluation.discountPercent}%</span>
         </div>
+        ${d.isAuction ? `<div class="max-bid-line">Ne pas dépasser : <b>${d.evaluation.maxProfitablePrice} €</b> pour rester rentable</div>` : ''}
         <a class="deal-link" href="${escapeHtml(d.listing.url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">Voir sur eBay →</a>
       </div>
     </div>
@@ -615,6 +632,7 @@ async function loadAll() {
     fetch('/api/watches').then(r => r.json()).catch(() => []),
     fetch('/api/deals').then(r => r.json()).catch(() => []),
   ]);
+  allWatches = watchesRes;
   renderWatches(watchesRes);
   renderDeals(dealsRes);
 }

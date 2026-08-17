@@ -16,6 +16,11 @@ function evaluateListing(listing, marketPrice, thresholdPercent) {
   const estimatedProfit = estimatedResaleNet - totalCost;
   const roiPercent = totalCost > 0 ? (estimatedProfit / totalCost) * 100 : 0;
 
+  // Prix maximum a payer pour rester rentable (= le point ou le profit devient nul).
+  // Utile en particulier pour les encheres : sert de plafond a ne pas depasser en enchérissant,
+  // frais de port non inclus (a ajouter separement selon le vendeur).
+  const maxProfitablePrice = Math.round(estimatedResaleNet * 100) / 100;
+
   const isDeal = discountPercent >= thresholdPercent;
 
   return {
@@ -25,6 +30,7 @@ function evaluateListing(listing, marketPrice, thresholdPercent) {
     discountPercent: Math.round(discountPercent * 10) / 10,
     estimatedProfit: Math.round(estimatedProfit * 100) / 100,
     roiPercent: Math.round(roiPercent * 10) / 10,
+    maxProfitablePrice,
   };
 }
 

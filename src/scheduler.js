@@ -52,6 +52,7 @@ async function scanWatch(watch) {
           comparablePrices: ref.comparablePrices || [],
           detectedGrader: ref.grader,
           detectedGrade: ref.grade,
+          isAuction: Boolean(listing.isAuction),
         });
         await notifyDeal({ listing, evaluation });
         console.log(`[DEAL] ${listing.title} -> ${evaluation.discountPercent}% sous le marche (echantillon: ${ref.sampleSize})`);

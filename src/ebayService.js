@@ -69,6 +69,10 @@ async function searchActiveListings(watch, { limit = 50, offset = 0 } = {}) {
   if (watch.maxPrice) filters.push(`price:[..${watch.maxPrice}]`);
   filters.push('priceCurrency:EUR');
   filters.push('buyingOptions:{FIXED_PRICE|AUCTION}');
+  // conditionIds:2750 = "Certified - Graded", l'identifiant officiel eBay pour les objets
+  // gradees (cartes/pieces). Exclut les cartes non gradees, stickers, figurines, accessoires...
+  // qui remontaient auparavant juste parce qu'ils contenaient le mot "PSA" ou "graded" dans le titre.
+  filters.push('conditionIds:{2750}');
   if (filters.length) params.set('filter', filters.join(','));
 
   const marketplace = process.env.EBAY_MARKETPLACE || 'EBAY_FR';
@@ -87,20 +91,40 @@ async function searchActiveListings(watch, { limit = 50, offset = 0 } = {}) {
   }
 
   const json = await res.json();
-  return (json.itemSummaries || []).map((item) => ({
-    listingId: item.itemId,
-    title: item.title,
-    price: item.price ? parseFloat(item.price.value) : null,
-    currency: item.price ? item.price.currency : 'EUR',
-    url: item.itemWebUrl,
-    imageUrl: item.image ? item.image.imageUrl : null,
-    condition: item.condition,
-    shippingCost: item.shippingOptions && item.shippingOptions[0]
-      ? parseFloat(item.shippingOptions[0].shippingCost?.value || 0)
-      : 0,
-    seller: item.seller ? item.seller.username : null,
-    buyingOptions: item.buyingOptions,
-  }));
+  return (json.itemSummaries || []).map((item) => {
+    // Extrait le grade et le grader depuis les donnees structurees eBay (conditionDescriptors),
+    // beaucoup plus fiable que de deviner depuis le texte libre du titre.
+    let officialGrader = null;
+    let officialGrade = null;
+    if (item.condition === 'Graded' && Array.isArray(item.conditionDescriptors)) {
+      for (const desc of item.conditionDescriptors) {
+        const values = (desc.values || []).map((v) => v.content).filter(Boolean);
+        if (desc.name === 'Professional Grader' && values[0]) officialGrader = values[0];
+        if (desc.name === 'Grade' && values[0]) officialGrade = values[0];
+      }
+    }
+
+    const isAuction = Array.isArray(item.buyingOptions) && item.buyingOptions.includes('AUCTION');
+
+    return {
+      listingId: item.itemId,
+      title: item.title,
+      price: item.price ? parseFloat(item.price.value) : null,
+      currency: item.price ? item.price.currency : 'EUR',
+      url: item.itemWebUrl,
+      imageUrl: item.image ? item.image.imageUrl : null,
+      condition: item.condition,
+      officialGrader,
+      officialGrade,
+      isAuction,
+      bidCount: item.bidCount || null,
+      shippingCost: item.shippingOptions && item.shippingOptions[0]
+        ? parseFloat(item.shippingOptions[0].shippingCost?.value || 0)
+        : 0,
+      seller: item.seller ? item.seller.username : null,
+      buyingOptions: item.buyingOptions,
+    };
+  });
 }
 
 module.exports = { getAccessToken, searchActiveListings, buildQuery };
