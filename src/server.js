@@ -64,6 +64,21 @@ app.post('/api/chat', async (req, res) => {
 
     switch (action) {
       case 'add_watch': {
+        // Evite les doublons : si une veille quasi-identique existe deja, on la reactive
+        // plutot que d'en creer une nouvelle qui ferait double emploi.
+        const normalizedNew = `${(input.cardName || '').toLowerCase()}|${(input.setName || '').toLowerCase()}|${(input.grader || '').toLowerCase()}|${(input.grade || '').toLowerCase()}`;
+        const existing = storage.listWatches().find((w) => {
+          const normalizedExisting = `${(w.cardName || '').toLowerCase()}|${(w.setName || '').toLowerCase()}|${(w.grader || '').toLowerCase()}|${(w.grade || '').toLowerCase()}`;
+          return normalizedExisting === normalizedNew;
+        });
+
+        if (existing) {
+          if (!existing.active) storage.setWatchActive(existing.id, true);
+          if (input.maxPrice) storage.updateWatch(existing.id, { maxPrice: input.maxPrice });
+          reply = `Cette veille existe deja (${existing.cardName || 'toutes cartes gradees'}${existing.grader ? ' ' + existing.grader : ''}) — je l'ai reactivee${input.maxPrice ? ' et mis a jour le budget' : ''} plutot que d'en creer une en double.`;
+          break;
+        }
+
         const watch = storage.addWatch({
           cardName: input.cardName || null,
           setName: input.setName || null,
@@ -120,7 +135,7 @@ app.post('/api/chat', async (req, res) => {
       case 'list_watches': {
         const watches = storage.listWatches();
         reply = watches.length
-          ? watches.map((w) => `- ${w.cardName}${w.grader ? ' ' + w.grader : ''}${w.grade ? ' ' + w.grade : ''}${w.active ? '' : ' (en pause)'}`).join('\n')
+          ? watches.map((w) => `- ${w.cardName || 'Toutes cartes gradees'}${w.grader ? ' ' + w.grader : ''}${w.grade ? ' ' + w.grade : ''}${w.maxPrice ? ', max ' + w.maxPrice + '€' : ''}${w.active ? '' : ' (en pause)'}`).join('\n')
           : 'Aucune veille configuree pour le moment.';
         break;
       }

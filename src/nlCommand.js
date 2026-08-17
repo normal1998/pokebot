@@ -89,7 +89,12 @@ async function interpretCommand(userText) {
       system: "Tu es l'assistant d'un bot de veille de cartes Pokemon gradees sur eBay. "
         + "Traduis la demande de l'utilisateur en UN SEUL appel d'outil approprie. "
         + "Si l'utilisateur donne plusieurs criteres en une phrase, capture-les tous dans les parametres. "
-        + "Si l'utilisateur ne precise pas de grade ou de grader, laisse le champ vide (n'invente rien). "
+        + "Si l'utilisateur ne precise pas de grade ou de grader, laisse le champ vide (n'invente rien) "
+        + "et cree la veille quand meme avec ce qui est donne — NE POSE PAS de question, un champ vide "
+        + "signifie juste 'indifferent'. Si l'utilisateur tape juste un nom de Pokemon seul (ex: 'Gengar', "
+        + "'Mewtwo'), c'est une demande d'ajout de veille pour ce Pokemon, gradee, sans autre precision : "
+        + "utilise add_watch directement avec ce nom, ne demande pas de precisions supplementaires. "
+        + "N'utilise clarify QUE si le message est vraiment incomprehensible ou hors-sujet (pas juste incomplet). "
         + "Si l'utilisateur veut surveiller TOUTES les cartes gradees sans viser un Pokemon precis "
         + "(ex: 'trouve-moi des pepites', 'n'importe quelle carte gradee pas chere', 'toutes les cartes gradees'), "
         + "laisse cardName VIDE plutot que d'inventer un nom de carte.",

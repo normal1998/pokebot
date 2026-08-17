@@ -11,6 +11,7 @@ async function scanWatch(watch) {
     // car elles couvrent des cartes tres differentes.
     const isBroadWatch = !watch.cardName && !watch.setName;
     const listings = await searchActiveListings(watch, { limit: isBroadWatch ? 200 : 50 });
+    console.log(`[SCAN] "${watch.cardName || watch.grader || 'toutes cartes'}" -> ${listings.length} annonce(s) trouvee(s) sur eBay`);
     if (!listings.length) return;
 
     const threshold = watch.thresholdPercent || storage.getConfig().defaultThresholdPercent;
