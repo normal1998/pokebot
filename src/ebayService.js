@@ -69,10 +69,10 @@ async function searchActiveListings(watch, { limit = 50, offset = 0 } = {}) {
   if (watch.maxPrice) filters.push(`price:[..${watch.maxPrice}]`);
   filters.push('priceCurrency:EUR');
   filters.push('buyingOptions:{FIXED_PRICE|AUCTION}');
-  // conditionIds:2750 = "Certified - Graded", l'identifiant officiel eBay pour les objets
-  // gradees (cartes/pieces). Exclut les cartes non gradees, stickers, figurines, accessoires...
-  // qui remontaient auparavant juste parce qu'ils contenaient le mot "PSA" ou "graded" dans le titre.
-  filters.push('conditionIds:{2750}');
+  // NB: le filtre officiel conditionIds:{2750} ("Certified - Graded") existe mais s'est
+  // revele trop strict en pratique : beaucoup de vendeurs ecrivent "PSA 9" dans le titre
+  // sans cocher l'attribut structure correspondant sur eBay, donc ce filtre coupait
+  // aussi de vraies cartes gradees. On filtre plutot par mots-cles apres coup (voir plus bas).
   if (filters.length) params.set('filter', filters.join(','));
 
   const marketplace = process.env.EBAY_MARKETPLACE || 'EBAY_FR';
@@ -124,7 +124,17 @@ async function searchActiveListings(watch, { limit = 50, offset = 0 } = {}) {
       seller: item.seller ? item.seller.username : null,
       buyingOptions: item.buyingOptions,
     };
-  });
+  }).filter((listing) => !isLikelyNotACard(listing.title));
+}
+
+// Exclut les objets qui ne sont clairement PAS des cartes a l'unite : stickers, figurines,
+// pin's, peluches, posters, pieces de monnaie, lots de plusieurs cartes non individualisees,
+// accessoires (classeurs, protege-cartes, boites vides)... Ces objets contiennent parfois
+// "PSA"/"graded" dans leur titre (ex: figurine certifiee) sans etre des cartes a acheter/revendre.
+const NOT_A_CARD_PATTERN = /\b(sticker|autocollant|funko|plush|peluche|figure|figurine|pin\b|pins\b|poster|coin\b|pieces?\s*de\s*monnaie|display\s*case|empty\s*slab|boite\s*vide|classeur|binder|sleeve|protege[- ]cartes|playmat|tapis\s*de\s*jeu|lot\s+de\s+\d|bundle|deck\s*box|booster\s*box\s*empty)\b/i;
+
+function isLikelyNotACard(title) {
+  return NOT_A_CARD_PATTERN.test(title || '');
 }
 
 module.exports = { getAccessToken, searchActiveListings, buildQuery };
