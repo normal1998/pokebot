@@ -15,6 +15,33 @@ db.defaults({
   config: { defaultThresholdPercent: Number(process.env.DEAL_THRESHOLD_PERCENT || 30) },
 }).write();
 
+// Migration : les veilles creees avant la correction du bug de traduction FR->EN
+// peuvent contenir des noms de Pokemon en francais, invisibles dans les annonces
+// eBay (redigees en anglais). On les corrige automatiquement au demarrage.
+const FR_TO_EN_POKEMON = {
+  dracaufeu: 'Charizard', ronflex: 'Snorlax', leviator: 'Gyarados', 'léviator': 'Gyarados',
+  evoli: 'Eevee', 'évoli': 'Eevee', salameche: 'Charmander', 'salamèche': 'Charmander',
+  carapuce: 'Squirtle', bulbizarre: 'Bulbasaur', tortank: 'Blastoise', ectoplasma: 'Gengar',
+  melofee: 'Clefairy', 'mélofée': 'Clefairy', rondoudou: 'Jigglypuff', aquali: 'Vaporeon',
+  voltali: 'Jolteon', pyroli: 'Flareon', flagadoss: 'Slowbro', minidraco: 'Dratini',
+  draco: 'Dragonair', dracolosse: 'Dragonite', ptera: 'Aerodactyl', 'ptéra': 'Aerodactyl',
+  sulfura: 'Moltres', electhor: 'Zapdos', artikodin: 'Articuno',
+};
+(function migrateFrenchCardNames() {
+  const watches = db.get('watches').value();
+  let changed = false;
+  watches.forEach((w) => {
+    if (w.cardName) {
+      const translated = FR_TO_EN_POKEMON[w.cardName.toLowerCase()];
+      if (translated) {
+        db.get('watches').find({ id: w.id }).assign({ cardName: translated }).write();
+        changed = true;
+      }
+    }
+  });
+  if (changed) console.log('[MIGRATION] Noms de cartes francais traduits en anglais pour la recherche eBay.');
+})();
+
 function getConfig() {
   return db.get('config').value();
 }
