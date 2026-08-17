@@ -42,6 +42,20 @@ const FR_TO_EN_POKEMON = {
   if (changed) console.log('[MIGRATION] Noms de cartes francais traduits en anglais pour la recherche eBay.');
 })();
 
+// Migration ponctuelle : une version anterieure du bot marquait TOUTES les annonces
+// scannees comme "deja vues", meme celles qui n'etaient pas des affaires, ce qui
+// bloquait silencieusement leur re-evaluation pour toujours. On repart sur une liste
+// propre une seule fois pour purger cet etat corrompu.
+(function resetCorruptedSeenList() {
+  const config = db.get('config').value();
+  if (!config.seenListResetDone) {
+    const before = db.get('seenListingIds').value().length;
+    db.set('seenListingIds', []).write();
+    db.get('config').assign({ seenListResetDone: true }).write();
+    console.log(`[MIGRATION] Liste des annonces "deja vues" reinitialisee (${before} entrees corrompues supprimees).`);
+  }
+})();
+
 function getConfig() {
   return db.get('config').value();
 }
