@@ -4,14 +4,11 @@
 // L'API Browse standard d'eBay ne donne acces qu'aux annonces ACTIVES, pas aux ventes conclues.
 // Pour un vrai historique des ventes (le plus fiable pour estimer un prix marche), il faut
 // la "Marketplace Insights API" d'eBay, soumise a une demande d'acces specifique aupres d'eBay
-// (formulaire a remplir sur developer.ebay.com, approbation pas automatique).
+// (formulaire a remplir sur developer.ebay.com, approbation pas automatique, non garantie).
 //
-// En attendant/sans cet acces, ce module utilise une methode de repli robuste :
-// on prend la mediane des prix des annonces actives comparables (hors valeurs extremes),
-// ce qui donne une bonne approximation du marche pour la plupart des cartes liquides.
-//
-// Si vous obtenez l'acces a la Marketplace Insights API plus tard, remplacez
-// getMarketPrice() par un appel a cette API pour plus de precision.
+// En attendant/sans cet acces, ce module utilise une methode de repli : la mediane des prix
+// des annonces ACTIVES comparables (hors valeurs extremes). Ce n'est PAS un vrai historique
+// de ventes, juste une approximation de ce que les vendeurs demandent actuellement.
 
 function median(values) {
   if (!values.length) return null;
@@ -34,31 +31,62 @@ function removeOutliers(values) {
 function getMarketPriceFromListings(listings) {
   const prices = listings.map((l) => l.price).filter((p) => typeof p === 'number' && p > 0);
   const cleaned = removeOutliers(prices);
-  const marketPrice = median(cleaned.length ? cleaned : prices);
+  const usedPrices = cleaned.length ? cleaned : prices;
+  const marketPrice = median(usedPrices);
   return {
     marketPrice,
-    sampleSize: cleaned.length || prices.length,
+    sampleSize: usedPrices.length,
+    comparablePrices: usedPrices.sort((a, b) => a - b),
     method: 'median_active_listings',
   };
 }
 
-// Mots a ignorer pour comparer des titres d'annonces entre eux (grades, graders,
-// mots generiques). Sert au mode "toutes les cartes gradees" ou l'on ne peut pas
-// comparer des cartes differentes avec un seul prix moyen global.
+// ===== Detection du grader et du grade dans le titre =====
+// CRITIQUE pour la fiabilite des prix : un PSA 10 et un PSA 6 de la MEME carte n'ont
+// rien a voir en valeur. On ne doit jamais les regrouper ensemble, meme si le reste
+// du titre est identique. Le grader et le grade sont donc des criteres de regroupement
+// A PART ENTIERE, jamais de simples "mots ignores".
+
+const GRADER_PATTERNS = [
+  { key: 'PSA', regex: /\bpsa\b/i },
+  { key: 'BGS', regex: /\bbgs\b|beckett/i },
+  { key: 'CGC', regex: /\bcgc\b/i },
+  { key: 'SGC', regex: /\bsgc\b/i },
+  { key: 'ACE', regex: /\bace\b/i },
+];
+
+function detectGrader(title) {
+  const t = title || '';
+  for (const { key, regex } of GRADER_PATTERNS) {
+    if (regex.test(t)) return key;
+  }
+  return null;
+}
+
+function detectGrade(title, grader) {
+  const t = title || '';
+  const graderWord = grader ? grader : '(psa|bgs|cgc|sgc|ace|beckett)';
+  const re = new RegExp(graderWord + '\\s*(\\d{1,2}(?:\\.\\d)?)', 'i');
+  const match = t.match(re);
+  if (match) return match[1];
+  return null;
+}
+
 const STOPWORDS = new Set([
-  'pokemon', 'card', 'carte', 'graded', 'gradee', 'tcg', 'psa', 'bgs', 'cgc', 'ace', 'sgc',
+  'pokemon', 'card', 'carte', 'graded', 'gradee', 'tcg',
   'the', 'a', 'de', 'la', 'le', 'des', 'et', 'holo', 'holographic', 'mint', 'near', 'gem', 'nm',
   'excellent', 'etat', 'rare', 'pepite', 'promo', 'edition', 'wotc', 'unlimited', 'shadowless',
-  'authentic', 'certified', 'slab', 'slabbed', 'vintage', 'original',
+  'authentic', 'certified', 'slab', 'slabbed', 'vintage', 'original', 'beckett',
+  'psa', 'bgs', 'cgc', 'sgc', 'ace',
 ]);
 
 function significantWords(title) {
   return new Set(
     (title || '')
       .toLowerCase()
-      .replace(/[^a-z0-9\s]/g, ' ')
+      .replace(/[^a-z0-9\s.]/g, ' ')
       .split(/\s+/)
-      .filter((w) => w && !STOPWORDS.has(w) && !/^\d+(\.\d+)?$/.test(w))
+      .filter((w) => w && !STOPWORDS.has(w) && !/^\d{1,2}(\.\d)?$/.test(w))
   );
 }
 
@@ -70,46 +98,64 @@ function jaccardSimilarity(setA, setB) {
   return union === 0 ? 0 : intersection / union;
 }
 
-// Regroupe les annonces par carte probable en comparant la similarite des titres
-// (et pas une correspondance exacte), pour eviter qu'un simple mot en plus dans une
-// annonce ("RARE", "PROMO"...) ne la fasse sortir de son groupe de comparaison.
-// Necessaire des qu'une veille couvre plusieurs cartes differentes.
+// Regroupe les annonces par carte probable EN TENANT COMPTE du grade et du grader
+// detectes (criteres stricts, jamais melanges), puis par similarite du reste du titre.
 function getGroupedMarketPrices(listings, { minSampleSize = 3, similarityThreshold = 0.5 } = {}) {
   const withWords = listings
     .filter((l) => typeof l.price === 'number' && l.price > 0)
-    .map((l) => ({ listing: l, words: significantWords(l.title) }));
+    .map((l) => {
+      const grader = detectGrader(l.title);
+      const grade = detectGrade(l.title, grader);
+      return { listing: l, words: significantWords(l.title), grader, grade };
+    });
 
-  const clusters = []; // { words: Set (union), items: [{listing, words}] }
+  const strictGroups = new Map();
   for (const entry of withWords) {
-    let bestCluster = null;
-    let bestScore = 0;
-    for (const cluster of clusters) {
-      const score = jaccardSimilarity(entry.words, cluster.words);
-      if (score > bestScore) {
-        bestScore = score;
-        bestCluster = cluster;
+    const key = `${entry.grader || '?'}|${entry.grade || '?'}`;
+    if (!strictGroups.has(key)) strictGroups.set(key, []);
+    strictGroups.get(key).push(entry);
+  }
+
+  const result = new Map();
+
+  for (const entries of strictGroups.values()) {
+    const clusters = [];
+    for (const entry of entries) {
+      let bestCluster = null;
+      let bestScore = 0;
+      for (const cluster of clusters) {
+        const score = jaccardSimilarity(entry.words, cluster.words);
+        if (score > bestScore) {
+          bestScore = score;
+          bestCluster = cluster;
+        }
+      }
+      if (bestCluster && bestScore >= similarityThreshold) {
+        bestCluster.items.push(entry);
+        bestCluster.words = new Set([...bestCluster.words].filter((w) => entry.words.has(w)));
+      } else {
+        clusters.push({ words: new Set(entry.words), items: [entry] });
       }
     }
-    if (bestCluster && bestScore >= similarityThreshold) {
-      bestCluster.items.push(entry);
-      // Garde uniquement les mots communs pour eviter la derive du cluster au fil des ajouts
-      bestCluster.words = new Set([...bestCluster.words].filter((w) => entry.words.has(w)));
-    } else {
-      clusters.push({ words: new Set(entry.words), items: [entry] });
+
+    for (const cluster of clusters) {
+      const clusterListings = cluster.items.map((i) => i.listing);
+      const grader = cluster.items[0].grader;
+      const grade = cluster.items[0].grade;
+      if (clusterListings.length < minSampleSize) {
+        for (const listing of clusterListings) {
+          result.set(listing.listingId, { marketPrice: null, sampleSize: clusterListings.length, comparablePrices: [], grader, grade });
+        }
+        continue;
+      }
+      const { marketPrice, sampleSize, comparablePrices } = getMarketPriceFromListings(clusterListings);
+      for (const listing of clusterListings) {
+        result.set(listing.listingId, { marketPrice, sampleSize, comparablePrices, grader, grade });
+      }
     }
   }
 
-  const result = new Map(); // listingId -> { marketPrice, sampleSize }
-  for (const cluster of clusters) {
-    const clusterListings = cluster.items.map((i) => i.listing);
-    if (clusterListings.length < minSampleSize) {
-      for (const listing of clusterListings) result.set(listing.listingId, { marketPrice: null, sampleSize: clusterListings.length });
-      continue;
-    }
-    const { marketPrice, sampleSize } = getMarketPriceFromListings(clusterListings);
-    for (const listing of clusterListings) result.set(listing.listingId, { marketPrice, sampleSize });
-  }
   return result;
 }
 
-module.exports = { getMarketPriceFromListings, getGroupedMarketPrices, significantWords, jaccardSimilarity };
+module.exports = { getMarketPriceFromListings, getGroupedMarketPrices, significantWords, jaccardSimilarity, detectGrader, detectGrade };

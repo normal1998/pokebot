@@ -21,10 +21,9 @@ async function scanWatch(watch) {
     if (!listings.length) return;
 
     const threshold = watch.thresholdPercent || storage.getConfig().defaultThresholdPercent;
-    // minSampleSize a 2 (au lieu de 3) : deux annonces quasi-identiques suffisent pour
-    // estimer un prix de reference fiable, surtout utile sur les veilles larges ou les
-    // doublons exacts d'une meme carte sont rares dans un echantillon divers.
-    const marketPrices = getGroupedMarketPrices(listings, { minSampleSize: 2 });
+    // minSampleSize a 3 : avec le grade et le grader desormais stricts (jamais melanges),
+    // 3 annonces vraiment comparables donnent un prix de reference fiable.
+    const marketPrices = getGroupedMarketPrices(listings, { minSampleSize: 3 });
     const groupsWithPrice = [...marketPrices.values()].filter(v => v.marketPrice !== null).length;
     console.log(`[SCAN] -> ${groupsWithPrice}/${listings.length} annonce(s) avaient assez de comparables pour etre evaluees`);
 
@@ -46,9 +45,13 @@ async function scanWatch(watch) {
         storage.markListingSeen(listing.listingId);
         const deal = storage.addDeal({
           watchId: watch.id,
+          watchLabel: watch.cardName || (watch.grader ? 'Toutes cartes ' + watch.grader : 'Toutes cartes gradees'),
           listing,
           evaluation,
           marketSampleSize: ref.sampleSize,
+          comparablePrices: ref.comparablePrices || [],
+          detectedGrader: ref.grader,
+          detectedGrade: ref.grade,
         });
         await notifyDeal({ listing, evaluation });
         console.log(`[DEAL] ${listing.title} -> ${evaluation.discountPercent}% sous le marche (echantillon: ${ref.sampleSize})`);

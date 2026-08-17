@@ -168,7 +168,8 @@
   .dot.paused { background: var(--muted-dim); }
 
   /* Deals styled like slab labels */
-  .deal-card { padding: 13px 16px; border-bottom: 1px solid var(--border); display: flex; gap: 12px; }
+  .deal-card { padding: 13px 16px; border-bottom: 1px solid var(--border); display: flex; gap: 12px; cursor: pointer; }
+  .deal-card:hover { background: var(--panel-2); }
   .deal-card:last-child { border-bottom: none; }
   .deal-thumb { width: 60px; height: 60px; border-radius: 6px; object-fit: cover; flex-shrink: 0; background: var(--panel-2); border: 1px solid var(--border-light); }
   .deal-thumb-placeholder { width: 60px; height: 60px; border-radius: 6px; flex-shrink: 0; background: var(--panel-2); border: 1px dashed var(--border-light); display: flex; align-items: center; justify-content: center; color: var(--muted-dim); font-size: 9px; text-align: center; font-family: var(--font-display); letter-spacing: 0.5px; }
@@ -178,6 +179,39 @@
   .deal-stats .discount { color: var(--good); font-weight: 700; }
   .deal-link { display: inline-flex; align-items: center; gap: 4px; color: var(--gold); text-decoration: none; font-size: 12px; font-weight: 600; }
   .deal-link:hover { text-decoration: underline; }
+
+  /* Filtre par veille */
+  .deal-filter { display: flex; flex-wrap: wrap; gap: 6px; padding: 12px 16px; border-bottom: 1px solid var(--border); }
+  .filter-chip {
+    font-size: 11.5px; padding: 5px 11px; border-radius: 20px; background: var(--panel-2);
+    border: 1px solid var(--border-light); color: var(--muted); cursor: pointer; white-space: nowrap;
+  }
+  .filter-chip.active { background: var(--gold); color: #1A1611; border-color: var(--gold); font-weight: 600; }
+  .filter-chip:not(.active):hover { border-color: var(--gold-dim); color: var(--text); }
+
+  /* Modal graphique de comparaison */
+  .chart-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 100;
+    display: flex; align-items: center; justify-content: center; padding: 20px;
+  }
+  .chart-modal {
+    background: var(--panel); border: 1px solid var(--border-light); border-radius: 12px;
+    max-width: 480px; width: 100%; max-height: 85vh; overflow-y: auto; padding: 20px;
+  }
+  .chart-modal-title { font-family: var(--font-display); font-size: 15px; font-weight: 600; margin-bottom: 4px; }
+  .chart-modal-sub { font-size: 12px; color: var(--muted-dim); margin-bottom: 18px; }
+  .chart-bars { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; }
+  .chart-bar-row { display: flex; align-items: center; gap: 10px; font-size: 11.5px; font-family: var(--font-mono); }
+  .chart-bar-track { flex: 1; height: 18px; background: var(--panel-2); border-radius: 3px; overflow: hidden; position: relative; }
+  .chart-bar-fill { height: 100%; background: var(--border-light); border-radius: 3px; }
+  .chart-bar-fill.highlight { background: var(--gold); }
+  .chart-bar-fill.median-marker { background: var(--holo-b); }
+  .chart-bar-price { width: 58px; text-align: right; color: var(--muted); flex-shrink: 0; }
+  .chart-legend { display: flex; gap: 14px; font-size: 11px; color: var(--muted-dim); margin-bottom: 4px; flex-wrap: wrap; }
+  .chart-legend span { display: inline-flex; align-items: center; gap: 5px; }
+  .chart-legend .sw { width: 9px; height: 9px; border-radius: 2px; display: inline-block; }
+  .chart-close { background: var(--panel-2); border: 1px solid var(--border-light); color: var(--muted); border-radius: 6px; padding: 6px 14px; font-size: 12px; cursor: pointer; float: right; margin-top: 6px; }
+  .chart-close:hover { color: var(--text); }
 
   /* Empty states with card-outline illustration */
   .empty-state { padding: 30px 20px; text-align: center; }
@@ -260,6 +294,7 @@
           <span>Affaires détectées</span>
           <span class="badge" id="deal-count">0</span>
         </div>
+        <div class="deal-filter" id="deal-filter"></div>
         <div id="deals-list"></div>
       </div>
 
@@ -439,16 +474,48 @@ const emptyDealsSvg = `<svg width="52" height="40" viewBox="0 0 52 40" fill="non
   <path d="M27 14h16M27 20h16M27 26h10" stroke="#4A3F2D" stroke-width="1.5" stroke-linecap="round"/>
 </svg>`;
 
+let allDeals = [];
+let activeFilter = 'all';
+
+function renderDealFilter(deals) {
+  const filterEl = document.getElementById('deal-filter');
+  // Construit la liste des veilles distinctes presentes dans les affaires trouvees
+  const labels = new Map(); // watchId -> label
+  deals.forEach(d => { if (d.watchId) labels.set(d.watchId, d.watchLabel || 'Veille'); });
+
+  if (labels.size <= 1) { filterEl.innerHTML = ''; filterEl.style.display = 'none'; return; }
+  filterEl.style.display = 'flex';
+
+  const chips = [{ id: 'all', label: 'Toutes (' + deals.length + ')' }];
+  labels.forEach((label, id) => {
+    const count = deals.filter(d => d.watchId === id).length;
+    chips.push({ id, label: `${label} (${count})` });
+  });
+
+  filterEl.innerHTML = chips.map(c => `<span class="filter-chip ${activeFilter === c.id ? 'active' : ''}" data-filter="${c.id}">${escapeHtml(c.label)}</span>`).join('');
+  filterEl.querySelectorAll('.filter-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      activeFilter = chip.dataset.filter;
+      renderDeals(allDeals);
+    });
+  });
+}
+
 function renderDeals(deals) {
+  allDeals = deals;
   document.getElementById('deal-count').textContent = deals.length;
   document.getElementById('stat-deals').innerHTML = deals.length + ' <span class="unit">' + (deals.length > 1 ? 'trouvées' : 'trouvée') + '</span>';
+
+  renderDealFilter(deals);
+  const visibleDeals = activeFilter === 'all' ? deals : deals.filter(d => d.watchId === activeFilter);
+
   const list = document.getElementById('deals-list');
-  if (!deals.length) {
-    list.innerHTML = `<div class="empty-state">${emptyDealsSvg}<div class="empty-title">Rien pour l'instant</div><div class="empty-sub">Le bot scanne eBay automatiquement toutes les 15 minutes. Les vraies décotes apparaîtront ici.</div></div>`;
+  if (!visibleDeals.length) {
+    list.innerHTML = `<div class="empty-state">${emptyDealsSvg}<div class="empty-title">Rien pour l'instant</div><div class="empty-sub">${deals.length ? "Aucune affaire pour cette veille precise — regarde l'onglet Toutes." : "Le bot scanne eBay automatiquement toutes les 15 minutes. Les vraies décotes apparaîtront ici."}</div></div>`;
     return;
   }
-  list.innerHTML = deals.map(d => `
-    <div class="deal-card">
+  list.innerHTML = visibleDeals.map((d, i) => `
+    <div class="deal-card" data-deal-index="${deals.indexOf(d)}">
       ${d.listing.imageUrl
         ? `<img class="deal-thumb" src="${escapeHtml(d.listing.imageUrl)}" alt="" loading="lazy" onerror="this.replaceWith(Object.assign(document.createElement('div'), {className:'deal-thumb-placeholder', textContent:'Pas de photo'}))" />`
         : `<div class="deal-thumb-placeholder">Pas de<br>photo</div>`
@@ -460,10 +527,51 @@ function renderDeals(deals) {
           <span>marché ${d.evaluation.marketPrice} €</span>
           <span class="discount">-${d.evaluation.discountPercent}%</span>
         </div>
-        <a class="deal-link" href="${escapeHtml(d.listing.url)}" target="_blank" rel="noopener">Voir sur eBay →</a>
+        <a class="deal-link" href="${escapeHtml(d.listing.url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">Voir sur eBay →</a>
       </div>
     </div>
   `).join('');
+
+  list.querySelectorAll('.deal-card').forEach(card => {
+    card.addEventListener('click', () => openPriceChart(deals[Number(card.dataset.dealIndex)]));
+  });
+}
+
+function openPriceChart(deal) {
+  const prices = (deal.comparablePrices && deal.comparablePrices.length) ? deal.comparablePrices : [deal.evaluation.totalCost];
+  const maxPrice = Math.max(...prices, deal.evaluation.totalCost);
+
+  const overlay = document.createElement('div');
+  overlay.className = 'chart-overlay';
+  overlay.innerHTML = `
+    <div class="chart-modal">
+      <div class="chart-modal-title">${escapeHtml(deal.listing.title)}</div>
+      <div class="chart-modal-sub">Comparé à ${prices.length} annonce(s) similaire(s)${deal.detectedGrader ? ' · ' + escapeHtml(deal.detectedGrader) : ''}${deal.detectedGrade ? ' ' + escapeHtml(deal.detectedGrade) : ''}</div>
+      <div class="chart-legend">
+        <span><span class="sw" style="background:var(--gold);"></span>Cette annonce</span>
+        <span><span class="sw" style="background:var(--border-light);"></span>Autres comparables</span>
+      </div>
+      <div class="chart-bars">
+        ${prices.map(p => {
+          const isThis = Math.abs(p - deal.evaluation.totalCost) < 0.01;
+          const widthPct = maxPrice > 0 ? Math.max(4, (p / maxPrice) * 100) : 4;
+          return `<div class="chart-bar-row">
+            <div class="chart-bar-track"><div class="chart-bar-fill ${isThis ? 'highlight' : ''}" style="width:${widthPct}%"></div></div>
+            <div class="chart-bar-price">${p} €</div>
+          </div>`;
+        }).join('')}
+      </div>
+      <div style="font-size:11.5px; color:var(--muted-dim); line-height:1.5;">
+        Prix marché estimé (médiane) : <b style="color:var(--text);">${deal.evaluation.marketPrice} €</b>.
+        Cette annonce : <b style="color:var(--gold);">${deal.evaluation.totalCost} €</b>, soit ${deal.evaluation.discountPercent}% en dessous.
+      </div>
+      <button class="chart-close">Fermer</button>
+      <div style="clear:both;"></div>
+    </div>
+  `;
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+  overlay.querySelector('.chart-close').addEventListener('click', () => overlay.remove());
+  document.body.appendChild(overlay);
 }
 
 function formatRelativeTime(iso) {
