@@ -8,14 +8,25 @@ const storage = require('./storage');
 async function scanWatch(watch) {
   try {
     // Veille large (aucun nom de carte precis) : on recupere plus d'annonces
-    // car elles couvrent des cartes tres differentes.
+    // car elles couvrent des cartes tres differentes. On agrege 2 pages (jusqu'a 400
+    // annonces) pour augmenter les chances d'avoir plusieurs exemplaires de la meme carte
+    // a comparer entre eux (necessaire pour evaluer une decote de facon fiable).
     const isBroadWatch = !watch.cardName && !watch.setName;
-    const listings = await searchActiveListings(watch, { limit: isBroadWatch ? 200 : 50 });
+    let listings = await searchActiveListings(watch, { limit: isBroadWatch ? 200 : 50 });
+    if (isBroadWatch) {
+      const secondPage = await searchActiveListings(watch, { limit: 200, offset: 200 });
+      listings = listings.concat(secondPage);
+    }
     console.log(`[SCAN] "${watch.cardName || watch.grader || 'toutes cartes'}" -> ${listings.length} annonce(s) trouvee(s) sur eBay`);
     if (!listings.length) return;
 
     const threshold = watch.thresholdPercent || storage.getConfig().defaultThresholdPercent;
-    const marketPrices = getGroupedMarketPrices(listings, { minSampleSize: isBroadWatch ? 3 : 2 });
+    // minSampleSize a 2 (au lieu de 3) : deux annonces quasi-identiques suffisent pour
+    // estimer un prix de reference fiable, surtout utile sur les veilles larges ou les
+    // doublons exacts d'une meme carte sont rares dans un echantillon divers.
+    const marketPrices = getGroupedMarketPrices(listings, { minSampleSize: 2 });
+    const groupsWithPrice = [...marketPrices.values()].filter(v => v.marketPrice !== null).length;
+    console.log(`[SCAN] -> ${groupsWithPrice}/${listings.length} annonce(s) avaient assez de comparables pour etre evaluees`);
 
     for (const listing of listings) {
       if (!listing.price) continue;

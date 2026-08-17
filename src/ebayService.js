@@ -53,7 +53,7 @@ function buildQuery(watch) {
   return parts.join(' ');
 }
 
-async function searchActiveListings(watch, { limit = 50 } = {}) {
+async function searchActiveListings(watch, { limit = 50, offset = 0 } = {}) {
   const token = await getAccessToken();
   const query = buildQuery(watch);
 
@@ -61,6 +61,7 @@ async function searchActiveListings(watch, { limit = 50 } = {}) {
     q: query,
     category_ids: '183454', // categorie eBay "Trading Card Games > Pokemon" gradees (a ajuster si besoin)
     limit: String(limit),
+    offset: String(offset),
     sort: 'price',
   });
 
