@@ -57,6 +57,17 @@ const FR_TO_EN_POKEMON = {
   }
 })();
 
+// Migration ponctuelle : vide le cache PokemonPriceTracker une fois, pour que les premiers
+// resultats "negatifs" mis en cache avant l'activation des logs de diagnostic soient retentes.
+(function resetPriceTrackerCacheOnce() {
+  const config = db.get('config').value();
+  if (!config.priceTrackerCacheResetDone) {
+    db.set('priceTrackerCache', {}).write();
+    db.get('config').assign({ priceTrackerCacheResetDone: true }).write();
+    console.log('[MIGRATION] Cache PokemonPriceTracker reinitialise.');
+  }
+})();
+
 function getConfig() {
   return db.get('config').value();
 }
