@@ -46,9 +46,17 @@ async function scanWatch(watch) {
       const alreadyAlerted = storage.hasSeenListing(listing.listingId);
 
       const ref = marketPrices.get(listing.listingId);
-      let marketPrice = ref ? ref.marketPrice : null;
-      let sampleSize = ref ? ref.sampleSize : 0;
-      let comparablePrices = ref ? ref.comparablePrices || [] : [];
+
+      // GARDE-FOU CRITIQUE : si ni le grade ni le grader n'ont pu etre detectes (ni via les
+      // donnees officielles eBay, ni via le titre), on ne sait PAS si cette annonce est
+      // vraiment une carte gradee. On ne l'evalue jamais comme "affaire", meme si elle a ete
+      // groupee avec d'autres annonces similaires — sinon des cartes communes NON gradees
+      // se retrouvent comparees entre elles et ressortent comme de fausses "bonnes affaires".
+      if (!ref || !ref.grader || !ref.grade) continue;
+
+      let marketPrice = ref.marketPrice;
+      let sampleSize = ref.sampleSize;
+      let comparablePrices = ref.comparablePrices || [];
       let officialSource = false;
       let priceHistory = [];
 

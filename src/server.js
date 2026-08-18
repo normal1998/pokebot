@@ -18,8 +18,24 @@ app.use(express.static(path.join(__dirname, '..', 'public'), {
 function findWatchByDescription(desc) {
   const watches = storage.listWatches();
   if (!watches.length) return null;
-  if (watches.length === 1 && !desc) return watches[0];
+  if (watches.length === 1) return watches[0]; // une seule veille : jamais besoin de preciser laquelle
   const lower = (desc || '').toLowerCase();
+  return watches.find((w) => {
+    const haystack = `${w.cardName} ${w.setName || ''} ${w.grader || ''} ${w.grade || ''}`.toLowerCase();
+    return haystack.includes(lower) || lower.includes((w.cardName || '').toLowerCase());
+  });
+}
+
+// Version plus prudente pour les actions destructrices (suppression) : ne cible
+// automatiquement la veille unique que si aucune description n'a ete donnee du tout.
+// Si une description a ete donnee mais ne correspond a rien, on prefere ne rien supprimer
+// plutot que de deviner et effacer la mauvaise veille par erreur.
+function findWatchForDeletion(desc) {
+  const watches = storage.listWatches();
+  if (!watches.length) return null;
+  if (!desc && watches.length === 1) return watches[0];
+  if (!desc) return null;
+  const lower = desc.toLowerCase();
   return watches.find((w) => {
     const haystack = `${w.cardName} ${w.setName || ''} ${w.grader || ''} ${w.grade || ''}`.toLowerCase();
     return haystack.includes(lower) || lower.includes((w.cardName || '').toLowerCase());
@@ -80,11 +96,11 @@ app.post('/api/scan-now', async (req, res) => {
 
 // Point d'entree principal : l'utilisateur ecrit en langage naturel, le bot agit.
 app.post('/api/chat', async (req, res) => {
-  const { message } = req.body;
+  const { message, history } = req.body;
   if (!message) return res.status(400).json({ error: 'message manquant' });
 
   try {
-    const { action, input } = await interpretCommand(message);
+    const { action, input } = await interpretCommand(message, Array.isArray(history) ? history : []);
     let reply;
 
     switch (action) {
@@ -133,12 +149,12 @@ app.post('/api/chat', async (req, res) => {
         break;
       }
       case 'remove_watch': {
-        const match = findWatchByDescription(input.matchDescription);
+        const match = findWatchForDeletion(input.matchDescription);
         if (match) {
           storage.removeWatch(match.id);
-          reply = `Veille supprimee : ${match.cardName}.`;
+          reply = `Veille supprimee : ${match.cardName || 'toutes cartes gradees'}.`;
         } else {
-          reply = "Je n'ai pas trouve de veille correspondante a supprimer.";
+          reply = "Je n'ai pas trouve de veille correspondante a supprimer — dis-moi precisement laquelle pour eviter toute erreur.";
         }
         break;
       }

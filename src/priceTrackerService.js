@@ -13,6 +13,16 @@ const fetch = require('node-fetch');
 
 const BASE_URL = 'https://www.pokemonpricetracker.com/api/v2';
 
+// Anti-spam : espace les appels d'au moins 1.2s pour ne jamais depasser la limite de
+// frequence de l'API gratuite (erreur HTTP 429 "Too Many Requests" sinon).
+let lastCallAt = 0;
+const MIN_DELAY_MS = 1200;
+async function throttle() {
+  const wait = lastCallAt + MIN_DELAY_MS - Date.now();
+  if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
+  lastCallAt = Date.now();
+}
+
 function isConfigured() {
   return Boolean(process.env.POKEMONPRICETRACKER_API_KEY);
 }
@@ -20,6 +30,7 @@ function isConfigured() {
 async function parseTitle(title) {
   if (!isConfigured()) return null;
   try {
+    await throttle();
     const res = await fetch(`${BASE_URL}/parse-title`, {
       method: 'POST',
       headers: {
@@ -52,6 +63,7 @@ async function parseTitle(title) {
 async function getOfficialMarketData(tcgPlayerId, grader, grade) {
   if (!isConfigured()) return null;
   try {
+    await throttle();
     const params = new URLSearchParams({
       tcgPlayerId: String(tcgPlayerId),
       includeEbay: 'true',

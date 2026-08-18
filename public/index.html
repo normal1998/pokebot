@@ -398,6 +398,14 @@ function addMessage(text, cls) {
 }
 
 async function sendMessage(text) {
+  // On construit l'historique recent AVANT d'ajouter le nouveau message, pour donner
+  // au bot le contexte des echanges precedents (essentiel pour comprendre des reponses
+  // de suivi courtes comme "non pas de seuil" ou "il n'y en a qu'une").
+  const recentHistory = Array.from(chatLog.children)
+    .filter(el => el.className.includes('user') || el.className.includes('bot'))
+    .slice(-8)
+    .map(el => ({ role: el.className.includes('user') ? 'user' : 'assistant', text: el.textContent }));
+
   addMessage(text, 'user');
   chatSend.disabled = true;
   const thinking = addMessage('...', 'bot');
@@ -405,7 +413,7 @@ async function sendMessage(text) {
     const res = await fetch('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: text }),
+      body: JSON.stringify({ message: text, history: recentHistory }),
     });
     const data = await res.json();
     thinking.remove();
@@ -566,11 +574,11 @@ function renderDeals(deals) {
       <div class="deal-body">
         <div class="deal-title">${d.isAuction ? '<span class="auction-badge">ENCHÈRE</span> ' : ''}${d.officialSource ? '<span class="official-badge" title="Prix validé par une source officielle">✓ VÉRIFIÉ</span> ' : ''}${escapeHtml(d.listing.title)}</div>
         <div class="deal-stats">
-          <span>${d.evaluation.totalCost} €</span>
-          <span>marché ${d.evaluation.marketPrice} €</span>
+          <span>${d.evaluation.totalCost} ${d.listing.currency || 'EUR'}</span>
+          <span>marché ${d.evaluation.marketPrice} ${d.listing.currency || 'EUR'}</span>
           <span class="discount">-${d.evaluation.discountPercent}%</span>
         </div>
-        ${d.isAuction ? `<div class="max-bid-line">Ne pas dépasser : <b>${d.evaluation.maxProfitablePrice} €</b> pour rester rentable</div>` : ''}
+        ${d.isAuction ? `<div class="max-bid-line">Ne pas dépasser : <b>${d.evaluation.maxProfitablePrice} ${d.listing.currency || 'EUR'}</b> pour rester rentable</div>` : ''}
         <a class="deal-link" href="${escapeHtml(d.listing.url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">Voir sur eBay →</a>
       </div>
       <button class="deal-remove" data-remove-id="${d.id}" title="Supprimer cette affaire" onclick="event.stopPropagation()">✕</button>
@@ -635,7 +643,7 @@ function openPriceChart(deal) {
       </svg>
       <div class="chart-legend">
         <span><span class="sw" style="background:var(--holo-b);"></span>Prix marché dans le temps</span>
-        <span><span class="sw" style="background:var(--gold);"></span>Cette annonce (${deal.evaluation.totalCost} €)</span>
+        <span><span class="sw" style="background:var(--gold);"></span>Cette annonce (${deal.evaluation.totalCost} ${deal.listing.currency || 'EUR'})</span>
       </div>
     `;
   } else {
@@ -653,7 +661,7 @@ function openPriceChart(deal) {
           const widthPct = maxPrice > 0 ? Math.max(4, (p / maxPrice) * 100) : 4;
           return `<div class="chart-bar-row">
             <div class="chart-bar-track"><div class="chart-bar-fill ${isThis ? 'highlight' : ''}" style="width:${widthPct}%"></div></div>
-            <div class="chart-bar-price">${p} €</div>
+            <div class="chart-bar-price">${p} ${deal.listing.currency || 'EUR'}</div>
           </div>`;
         }).join('')}
       </div>
@@ -667,8 +675,8 @@ function openPriceChart(deal) {
       <div class="chart-modal-title">${escapeHtml(deal.listing.title)}</div>
       ${bodyHtml}
       <div style="font-size:11.5px; color:var(--muted-dim); line-height:1.5;">
-        Prix marché ${deal.officialSource ? '(source officielle)' : '(estimation eBay)'} : <b style="color:var(--text);">${deal.evaluation.marketPrice} €</b>.
-        Cette annonce : <b style="color:var(--gold);">${deal.evaluation.totalCost} €</b>, soit ${deal.evaluation.discountPercent}% en dessous.
+        Prix marché ${deal.officialSource ? '(source officielle)' : '(estimation eBay)'} : <b style="color:var(--text);">${deal.evaluation.marketPrice} ${deal.listing.currency || 'EUR'}</b>.
+        Cette annonce : <b style="color:var(--gold);">${deal.evaluation.totalCost} ${deal.listing.currency || 'EUR'}</b>, soit ${deal.evaluation.discountPercent}% en dessous.
       </div>
       <button class="chart-close">Fermer</button>
       <div style="clear:both;"></div>

@@ -67,15 +67,17 @@ async function searchActiveListings(watch, { limit = 50, offset = 0 } = {}) {
 
   const filters = [];
   if (watch.maxPrice) filters.push(`price:[..${watch.maxPrice}]`);
-  filters.push('priceCurrency:EUR');
   filters.push('buyingOptions:{FIXED_PRICE|AUCTION}');
-  // NB: le filtre officiel conditionIds:{2750} ("Certified - Graded") existe mais s'est
-  // revele trop strict en pratique : beaucoup de vendeurs ecrivent "PSA 9" dans le titre
-  // sans cocher l'attribut structure correspondant sur eBay, donc ce filtre coupait
-  // aussi de vraies cartes gradees. On filtre plutot par mots-cles apres coup (voir plus bas).
+  // NB: pas de filtre priceCurrency ici, pour ne pas exclure des annonces valables juste
+  // a cause de leur devise. Le marketplace EBAY_US (marche mondial le plus liquide pour les
+  // cartes gradees) est utilise par defaut : bien plus d'annonces comparables qu'en restant
+  // limite au marche francais, ce qui donne des prix de reference beaucoup plus fiables.
   if (filters.length) params.set('filter', filters.join(','));
 
-  const marketplace = process.env.EBAY_MARKETPLACE || 'EBAY_FR';
+  // EBAY_US par defaut : de loin le marketplace avec le plus de volume pour les cartes
+  // gradees (bien plus qu'EBAY_FR), donc de bien meilleures chances de trouver plusieurs
+  // annonces vraiment comparables pour estimer un prix de reference fiable.
+  const marketplace = process.env.EBAY_MARKETPLACE || 'EBAY_US';
 
   const res = await fetch(`${EBAY_ENV}/buy/browse/v1/item_summary/search?${params.toString()}`, {
     headers: {

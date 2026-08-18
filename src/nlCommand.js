@@ -87,9 +87,17 @@ const TOOLS = [
   },
 ];
 
-async function interpretCommand(userText) {
+async function interpretCommand(userText, conversationHistory = []) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) throw new Error('ANTHROPIC_API_KEY manquant.');
+
+  // On donne au modele les derniers echanges (pas seulement le message actuel) pour qu'il
+  // comprenne les reponses de suivi comme "non pas de seuil" ou "il n'y en a qu'une",
+  // qui n'ont de sens que dans le contexte de ce qui vient d'etre dit juste avant.
+  const historyMessages = conversationHistory.slice(-8).map((m) => ({
+    role: m.role === 'user' ? 'user' : 'assistant',
+    content: m.text,
+  }));
 
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
@@ -103,24 +111,33 @@ async function interpretCommand(userText) {
       max_tokens: 1000,
       system: "Tu es l'assistant d'un bot de veille de cartes Pokemon gradees sur eBay. "
         + "Traduis la demande de l'utilisateur en UN SEUL appel d'outil approprie. "
+        + "Utilise l'historique de conversation fourni pour comprendre le CONTEXTE d'une reponse "
+        + "de suivi courte (ex: si le message precedent du bot demandait 'pour quelle veille ?' "
+        + "et que l'utilisateur repond juste un nom ou 'la seule qu'il y a', relie cette reponse "
+        + "a la question precedente au lieu de redemander). "
         + "Si l'utilisateur donne plusieurs criteres en une phrase, capture-les tous dans les parametres. "
         + "IMPORTANT: les annonces eBay sont redigees en tres grande majorite en ANGLAIS, meme sur eBay France. "
         + "Si l'utilisateur donne un nom de Pokemon en francais (ex: Dracaufeu, Ronflex, Leviator, Evoli, "
-        + "Salameche, Carapuce, Bulbizarre, Tortank, Ectoplasma, Melofee), tu DOIS mettre le nom ANGLAIS "
+        + "Salameche, Carapuce, Bulbizarre, Tortank, Ectoplasma, Melofee, Chinchidou), tu DOIS mettre le nom ANGLAIS "
         + "officiel du Pokemon dans cardName (ex: Charizard, Snorlax, Gyarados, Eevee, Charmander, Squirtle, "
-        + "Bulbasaur, Blastoise, Gengar, Clefairy), pas le nom francais, sinon la recherche eBay ne trouvera rien. "
+        + "Bulbasaur, Blastoise, Gengar, Clefairy, Togepi), pas le nom francais, sinon la recherche eBay ne trouvera rien. "
         + "Si l'utilisateur ne precise pas de grade ou de grader, laisse le champ vide (n'invente rien) "
         + "et cree la veille quand meme avec ce qui est donne — NE POSE PAS de question, un champ vide "
         + "signifie juste 'indifferent'. Si l'utilisateur tape juste un nom de Pokemon seul (ex: 'Gengar', "
         + "'Mewtwo'), c'est une demande d'ajout de veille pour ce Pokemon, gradee, sans autre precision : "
         + "utilise add_watch directement avec ce nom, ne demande pas de precisions supplementaires. "
+        + "Si l'utilisateur dit 'peu importe le seuil', 'pas de seuil', 'aucun seuil', 'n'importe quel prix', "
+        + "utilise thresholdPercent = -1000 (valeur sentinelle qui desactive tout filtrage : absolument tout "
+        + "resultat comparable sera montre, meme au-dessus du prix marche). "
         + "N'utilise clarify QUE si le message est vraiment incomprehensible ou hors-sujet (pas juste incomplet). "
+        + "Si une precision manque (quelle veille, quel seuil...) mais qu'il n'y a qu'UNE SEULE veille "
+        + "active d'apres l'historique de conversation ou le contexte, cible-la directement sans demander. "
         + "Si l'utilisateur demande si le bot a trouve quelque chose, si ca a marche, s'il y a du nouveau "
         + "(ex: 'alors ?', 'tu as trouve ?', 'ca a donne quoi ?'), utilise check_results, jamais clarify. "
         + "Si l'utilisateur veut surveiller TOUTES les cartes gradees sans viser un Pokemon precis "
         + "(ex: 'trouve-moi des pepites', 'n'importe quelle carte gradee pas chere', 'toutes les cartes gradees'), "
         + "laisse cardName VIDE plutot que d'inventer un nom de carte.",
-      messages: [{ role: 'user', content: userText }],
+      messages: [...historyMessages, { role: 'user', content: userText }],
       tools: TOOLS,
       tool_choice: { type: 'any' },
     }),
