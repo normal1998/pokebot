@@ -117,11 +117,11 @@ app.post('/api/chat', async (req, res) => {
           ? `Nouvelle veille ajoutee : ${watch.cardName}`
             + `${watch.grader ? ' ' + watch.grader : ''}${watch.grade ? ' ' + watch.grade : ''}`
             + `${watch.maxPrice ? ', budget max ' + watch.maxPrice + ' EUR' : ''}`
-            + `${watch.thresholdPercent ? ', seuil ' + watch.thresholdPercent + '%' : ''}.`
+            + `. Seuil applique : ${watch.thresholdPercent || storage.getConfig().defaultThresholdPercent}% sous le prix marche (dis-moi "seuil a X%" pour le changer).`
           : `Veille large ajoutee : toutes les cartes Pokemon gradees`
             + `${watch.grader ? ' ' + watch.grader : ''}${watch.grade ? ' ' + watch.grade : ''}`
             + `${watch.maxPrice ? ', budget max ' + watch.maxPrice + ' EUR' : ''}`
-            + `${watch.thresholdPercent ? ', seuil ' + watch.thresholdPercent + '%' : ''}. `
+            + `. Seuil applique : ${watch.thresholdPercent || storage.getConfig().defaultThresholdPercent}% sous le prix marche (dis-moi "seuil a X%" pour le changer). `
             + `Le bot compare chaque carte a des cartes similaires (jamais a une carte differente) avant de l'evaluer.`;
         break;
       }

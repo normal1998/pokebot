@@ -480,7 +480,7 @@ function renderWatches(watches) {
     <div class="watch-item">
       <div>
         <div class="watch-name">${w.cardName ? escapeHtml(w.cardName) : 'Toutes cartes gradées'}${w.grade ? ' ' + escapeHtml(w.grade) : ''}</div>
-        <div class="watch-meta">${w.maxPrice ? 'Budget max ' + w.maxPrice + ' €' : 'Sans budget max'}</div>
+        <div class="watch-meta">${w.maxPrice ? 'Budget max ' + w.maxPrice + ' € · ' : ''}Seuil ${w.thresholdPercent || defaultThresholdPercent || '?'}%</div>
       </div>
       <div style="display:flex; align-items:center; gap:8px;">
         <span class="grader-chip ${graderChipClass(w.grader)}">${w.grader ? escapeHtml(w.grader) : 'Tous'}</span>
@@ -512,6 +512,7 @@ const emptyDealsSvg = `<svg width="52" height="40" viewBox="0 0 52 40" fill="non
 
 let allDeals = [];
 let allWatches = [];
+let defaultThresholdPercent = null;
 let activeFilter = 'all';
 
 function watchLabelFor(watchId, fallback) {
@@ -692,6 +693,7 @@ function formatRelativeTime(iso) {
 async function renderStatus() {
   try {
     const status = await fetch('/api/status').then(r => r.json());
+    defaultThresholdPercent = status.defaultThresholdPercent;
     const statusEl = document.getElementById('stat-status');
     const allConfigured = status.ebayConfigured && status.anthropicConfigured;
     statusEl.innerHTML = `<span class="led-dot ${allConfigured ? 'on' : ''}"></span><span class="unit">${allConfigured ? 'Opérationnel' : 'Config incomplète'}</span>`;
@@ -724,8 +726,7 @@ async function loadAll() {
 if (!loadChatHistory()) {
   addMessage('Écris par exemple : "cherche des Dracaufeu PSA 9 ou 10 sous 200€"', 'system');
 }
-renderStatus();
-loadAll();
+renderStatus().then(loadAll);
 setInterval(loadAll, 30000);
 setInterval(renderStatus, 60000);
 </script>

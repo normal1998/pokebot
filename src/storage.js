@@ -12,7 +12,10 @@ db.defaults({
   watches: [],
   deals: [],
   seenListingIds: [],
-  config: { defaultThresholdPercent: Number(process.env.DEAL_THRESHOLD_PERCENT || 30) },
+  // Seuil tres bas par defaut (pas de filtrage cache) : toute annonce moins chere que
+  // le prix de reference remonte. C'est a l'utilisateur de decider et de resserrer ce
+  // seuil lui-meme via le chat s'il veut etre plus selectif, jamais impose en silence.
+  config: { defaultThresholdPercent: Number(process.env.DEAL_THRESHOLD_PERCENT || 5) },
   priceTrackerCache: {},
 }).write();
 
