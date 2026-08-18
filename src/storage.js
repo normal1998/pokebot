@@ -13,6 +13,7 @@ db.defaults({
   deals: [],
   seenListingIds: [],
   config: { defaultThresholdPercent: Number(process.env.DEAL_THRESHOLD_PERCENT || 30) },
+  priceTrackerCache: {},
 }).write();
 
 // Migration : les veilles creees avant la correction du bug de traduction FR->EN
@@ -58,6 +59,22 @@ const FR_TO_EN_POKEMON = {
 
 function getConfig() {
   return db.get('config').value();
+}
+
+// Cache des reponses de l'API PokemonPriceTracker (par carte+grade+grader), pour eviter de
+// re-consommer des credits a chaque scan (toutes les 15 min) pour la meme carte. Valable 24h.
+function getPriceTrackerCache(key) {
+  const safeKey = key.replace(/\./g, '_');
+  const entry = db.get('priceTrackerCache').get(safeKey).value();
+  if (!entry) return undefined;
+  const ageMs = Date.now() - new Date(entry.fetchedAt).getTime();
+  if (ageMs > 24 * 60 * 60 * 1000) return undefined; // perime
+  return entry.value;
+}
+
+function setPriceTrackerCache(key, value) {
+  const safeKey = key.replace(/\./g, '_');
+  db.get('priceTrackerCache').set(safeKey, { value, fetchedAt: new Date().toISOString() }).write();
 }
 
 function setDefaultThreshold(thresholdPercent) {
@@ -145,6 +162,8 @@ module.exports = {
   removeDeal,
   clearAllDeals,
   getConfig,
+  getPriceTrackerCache,
+  setPriceTrackerCache,
   setDefaultThreshold,
   setScanStatus,
 };

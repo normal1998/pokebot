@@ -42,27 +42,49 @@ async function scanWatch(watch) {
       const alreadyAlerted = storage.hasSeenListing(listing.listingId);
 
       const ref = marketPrices.get(listing.listingId);
-      if (!ref || ref.marketPrice === null) continue; // pas assez de comparables, on ne devine pas
+      let marketPrice = ref ? ref.marketPrice : null;
+      let sampleSize = ref ? ref.sampleSize : 0;
+      let comparablePrices = ref ? ref.comparablePrices || [] : [];
+      let officialSource = false;
+      let priceHistory = [];
 
-      const evaluation = evaluateListing(listing, ref.marketPrice, threshold);
+      // Cas frequent sur une veille ciblee (carte precise) : pas assez d'annonces eBay
+      // similaires pour estimer un prix "maison" fiable. Dans ce cas, si la cle API est
+      // configuree, on interroge directement la source officielle pour CETTE carte —
+      // elle n'a pas besoin de plusieurs annonces eBay actives, elle a sa propre base de
+      // ventes passees. Mise en cache 24h par carte+grade pour ne pas gaspiller le quota
+      // gratuit (100 requetes/jour) sur les memes cartes scannees toutes les 15 minutes.
+      if ((!marketPrice || sampleSize < 2) && !isBroadWatch && priceTracker.isConfigured()) {
+        const detectedGrader = ref?.grader;
+        const detectedGrade = ref?.grade;
+        const cacheKey = `${(watch.cardName || '').toLowerCase()}|${detectedGrader || '?'}|${detectedGrade || '?'}`;
+        let official = storage.getPriceTrackerCache(cacheKey);
+        if (official === undefined) {
+          official = await priceTracker.getOfficialPriceForListing(listing, detectedGrader, detectedGrade);
+          storage.setPriceTrackerCache(cacheKey, official || null);
+        }
+        if (official && official.officialMarketPrice) {
+          marketPrice = official.officialMarketPrice;
+          sampleSize = official.salesCount || 1;
+          priceHistory = official.priceHistory || [];
+          officialSource = true;
+        }
+      }
+
+      if (!marketPrice) continue; // toujours pas assez d'information, on ne devine pas
+
+      const evaluation = evaluateListing(listing, marketPrice, threshold);
       if (bestDiscount === null || evaluation.discountPercent > bestDiscount) bestDiscount = evaluation.discountPercent;
       if (evaluation.isDeal && !alreadyAlerted) {
-        // Avant d'alerter, on valide (si la cle API est configuree) le prix marche
-        // aupres d'une source officielle specialisee (vraies ventes eBay par grade exact),
-        // plus fiable que notre estimation "maison". On ne fait cet appel QUE pour les
-        // candidats deja reperes comme affaires, pour rester dans le quota gratuit.
+        // Si on n'a pas encore de validation officielle (deal trouve via l'estimation locale
+        // sur une veille large par ex.), on tente une derniere validation avant d'alerter.
         let finalEvaluation = evaluation;
-        let priceHistory = [];
-        let officialSource = false;
-
-        if (priceTracker.isConfigured()) {
+        if (!officialSource && priceTracker.isConfigured()) {
           try {
-            const official = await priceTracker.getOfficialPriceForListing(listing, ref.grader, ref.grade);
+            const official = await priceTracker.getOfficialPriceForListing(listing, ref?.grader, ref?.grade);
             if (official && official.officialMarketPrice) {
               const revaluated = evaluateListing(listing, official.officialMarketPrice, threshold);
               if (!revaluated.isDeal) {
-                // La source officielle dit que ce n'est finalement pas une bonne affaire :
-                // on fait confiance a la source officielle et on n'alerte pas.
                 storage.markListingSeen(listing.listingId);
                 continue;
               }
@@ -81,12 +103,12 @@ async function scanWatch(watch) {
           watchLabel: watch.cardName || (watch.grader ? 'Toutes cartes ' + watch.grader : 'Toutes cartes gradees'),
           listing,
           evaluation: finalEvaluation,
-          marketSampleSize: ref.sampleSize,
-          comparablePrices: ref.comparablePrices || [],
+          marketSampleSize: sampleSize,
+          comparablePrices,
           priceHistory,
           officialSource,
-          detectedGrader: ref.grader,
-          detectedGrade: ref.grade,
+          detectedGrader: ref?.grader,
+          detectedGrade: ref?.grade,
           isAuction: Boolean(listing.isAuction),
         });
         await notifyDeal({ listing, evaluation: finalEvaluation });
