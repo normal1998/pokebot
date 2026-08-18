@@ -82,11 +82,21 @@ async function scanWatch(watch) {
         let finalEvaluation = evaluation;
         if (!officialSource && priceTracker.isConfigured()) {
           try {
-            const official = await priceTracker.getOfficialPriceForListing(listing, ref?.grader, ref?.grade);
+            // Cache par annonce (pas par carte) pour eviter de re-interroger l'API a chaque
+            // scan (15 min) pour la MEME annonce deja rejetee, sans pour autant la bannir
+            // definitivement (contrairement a avant : une annonce rejetee une fois reste
+            // re-evaluable si les donnees changent).
+            const listingCacheKey = `listing|${listing.listingId}`;
+            let official = storage.getPriceTrackerCache(listingCacheKey);
+            if (official === undefined) {
+              official = await priceTracker.getOfficialPriceForListing(listing, ref?.grader, ref?.grade);
+              storage.setPriceTrackerCache(listingCacheKey, official || null);
+            }
             if (official && official.officialMarketPrice) {
               const revaluated = evaluateListing(listing, official.officialMarketPrice, threshold);
               if (!revaluated.isDeal) {
-                storage.markListingSeen(listing.listingId);
+                // Pas d'alerte cette fois, mais PAS de bannissement definitif :
+                // l'annonce reste re-evaluable a un prochain scan (cache expire sous 24h).
                 continue;
               }
               finalEvaluation = revaluated;
