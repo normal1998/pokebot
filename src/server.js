@@ -60,6 +60,18 @@ app.get('/api/deals', (req, res) => {
   res.json(storage.listDeals(200));
 });
 
+// Suppression d'une seule affaire detectee (bouton individuel)
+app.delete('/api/deals/:id', (req, res) => {
+  storage.removeDeal(req.params.id);
+  res.json({ ok: true, deals: storage.listDeals(200) });
+});
+
+// Suppression de toutes les affaires detectees d'un coup
+app.delete('/api/deals', (req, res) => {
+  storage.clearAllDeals();
+  res.json({ ok: true, deals: [] });
+});
+
 app.post('/api/scan-now', async (req, res) => {
   await scanAllWatches();
   res.json({ ok: true });
@@ -152,6 +164,28 @@ app.post('/api/chat', async (req, res) => {
         reply = watches.length
           ? watches.map((w) => `- ${w.cardName || 'Toutes cartes gradees'}${w.grader ? ' ' + w.grader : ''}${w.grade ? ' ' + w.grade : ''}${w.maxPrice ? ', max ' + w.maxPrice + '€' : ''}${w.active ? '' : ' (en pause)'}`).join('\n')
           : 'Aucune veille configuree pour le moment.';
+        break;
+      }
+      case 'check_results': {
+        const allDeals = storage.listDeals(500);
+        const config = storage.getConfig();
+
+        if (input.matchDescription) {
+          const match = findWatchByDescription(input.matchDescription);
+          if (!match) {
+            reply = "Je n'ai pas trouve de veille correspondante a cette description.";
+            break;
+          }
+          const matchDeals = allDeals.filter((d) => d.watchId === match.id);
+          reply = matchDeals.length
+            ? `Oui : ${matchDeals.length} affaire(s) trouvee(s) pour "${match.cardName || 'toutes cartes'}${match.grader ? ' ' + match.grader : ''}". La meilleure decote : ${Math.max(...matchDeals.map((d) => d.evaluation.discountPercent))}%.`
+            : `Non, rien trouve pour l'instant pour "${match.cardName || 'toutes cartes'}${match.grader ? ' ' + match.grader : ''}". Le bot scanne toutes les ${process.env.SCAN_INTERVAL_MINUTES || 15} minutes, ca peut prendre un peu de temps.`;
+        } else {
+          const activeWatches = storage.listWatches().filter((w) => w.active);
+          reply = allDeals.length
+            ? `Oui : ${allDeals.length} affaire(s) trouvee(s) au total, sur ${activeWatches.length} veille(s) active(s). Derniere trouvee : ${allDeals[0] ? allDeals[0].listing.title : ''}.`
+            : `Non, rien trouve pour l'instant sur les ${activeWatches.length} veille(s) active(s). ${config.lastScanAt ? 'Dernier scan : ' + new Date(config.lastScanAt).toLocaleTimeString('fr-FR') + '.' : ''}`;
+        }
         break;
       }
       case 'clarify':

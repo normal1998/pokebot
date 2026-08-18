@@ -123,6 +123,14 @@ function listDeals(limit = 100) {
   return db.get('deals').orderBy(['foundAt'], ['desc']).take(limit).value();
 }
 
+function removeDeal(id) {
+  db.get('deals').remove({ id }).write();
+}
+
+function clearAllDeals() {
+  db.set('deals', []).write();
+}
+
 module.exports = {
   db,
   listWatches,
@@ -134,6 +142,8 @@ module.exports = {
   markListingSeen,
   addDeal,
   listDeals,
+  removeDeal,
+  clearAllDeals,
   getConfig,
   setDefaultThreshold,
   setScanStatus,

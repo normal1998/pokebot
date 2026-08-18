@@ -63,6 +63,20 @@ const TOOLS = [
     input_schema: { type: 'object', properties: {} },
   },
   {
+    name: 'check_results',
+    description: "A utiliser quand l'utilisateur demande si le bot a trouve quelque chose, "
+      + "si ca a marche, s'il y a du nouveau, un etat des lieux des resultats "
+      + "(ex: 'as-tu trouve ce que je cherche ?', 'alors, du nouveau ?', 'ca a donne quoi ?', "
+      + "'tu as trouve des affaires ?'). Peut cibler une veille precise ou etre general.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        matchDescription: { type: 'string', description: "Nom de carte ou description pour cibler une veille precise, vide si la question est generale" },
+      },
+      required: [],
+    },
+  },
+  {
     name: 'clarify',
     description: "A utiliser si la demande de l'utilisateur est ambigue et qu'il faut lui poser une question avant d'agir.",
     input_schema: {
@@ -101,6 +115,8 @@ async function interpretCommand(userText) {
         + "'Mewtwo'), c'est une demande d'ajout de veille pour ce Pokemon, gradee, sans autre precision : "
         + "utilise add_watch directement avec ce nom, ne demande pas de precisions supplementaires. "
         + "N'utilise clarify QUE si le message est vraiment incomprehensible ou hors-sujet (pas juste incomplet). "
+        + "Si l'utilisateur demande si le bot a trouve quelque chose, si ca a marche, s'il y a du nouveau "
+        + "(ex: 'alors ?', 'tu as trouve ?', 'ca a donne quoi ?'), utilise check_results, jamais clarify. "
         + "Si l'utilisateur veut surveiller TOUTES les cartes gradees sans viser un Pokemon precis "
         + "(ex: 'trouve-moi des pepites', 'n'importe quelle carte gradee pas chere', 'toutes les cartes gradees'), "
         + "laisse cardName VIDE plutot que d'inventer un nom de carte.",

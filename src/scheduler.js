@@ -3,6 +3,7 @@ const { searchActiveListings } = require('./ebayService');
 const { getGroupedMarketPrices } = require('./priceReference');
 const { evaluateListing } = require('./profitability');
 const { notifyDeal } = require('./notifier');
+const priceTracker = require('./priceTrackerService');
 const storage = require('./storage');
 
 async function scanWatch(watch) {
@@ -42,20 +43,50 @@ async function scanWatch(watch) {
       const evaluation = evaluateListing(listing, ref.marketPrice, threshold);
       if (bestDiscount === null || evaluation.discountPercent > bestDiscount) bestDiscount = evaluation.discountPercent;
       if (evaluation.isDeal && !alreadyAlerted) {
+        // Avant d'alerter, on valide (si la cle API est configuree) le prix marche
+        // aupres d'une source officielle specialisee (vraies ventes eBay par grade exact),
+        // plus fiable que notre estimation "maison". On ne fait cet appel QUE pour les
+        // candidats deja reperes comme affaires, pour rester dans le quota gratuit.
+        let finalEvaluation = evaluation;
+        let priceHistory = [];
+        let officialSource = false;
+
+        if (priceTracker.isConfigured()) {
+          try {
+            const official = await priceTracker.getOfficialPriceForListing(listing, ref.grader, ref.grade);
+            if (official && official.officialMarketPrice) {
+              const revaluated = evaluateListing(listing, official.officialMarketPrice, threshold);
+              if (!revaluated.isDeal) {
+                // La source officielle dit que ce n'est finalement pas une bonne affaire :
+                // on fait confiance a la source officielle et on n'alerte pas.
+                storage.markListingSeen(listing.listingId);
+                continue;
+              }
+              finalEvaluation = revaluated;
+              priceHistory = official.priceHistory || [];
+              officialSource = true;
+            }
+          } catch (e) {
+            console.error('Validation prix officiel echouee, on garde l\'estimation locale:', e.message);
+          }
+        }
+
         storage.markListingSeen(listing.listingId);
         const deal = storage.addDeal({
           watchId: watch.id,
           watchLabel: watch.cardName || (watch.grader ? 'Toutes cartes ' + watch.grader : 'Toutes cartes gradees'),
           listing,
-          evaluation,
+          evaluation: finalEvaluation,
           marketSampleSize: ref.sampleSize,
           comparablePrices: ref.comparablePrices || [],
+          priceHistory,
+          officialSource,
           detectedGrader: ref.grader,
           detectedGrade: ref.grade,
           isAuction: Boolean(listing.isAuction),
         });
-        await notifyDeal({ listing, evaluation });
-        console.log(`[DEAL] ${listing.title} -> ${evaluation.discountPercent}% sous le marche (echantillon: ${ref.sampleSize})`);
+        await notifyDeal({ listing, evaluation: finalEvaluation });
+        console.log(`[DEAL] ${listing.title} -> ${finalEvaluation.discountPercent}% sous le marche (${officialSource ? 'source officielle' : 'estimation locale'})`);
       }
     }
     console.log(`[SCAN] -> meilleure decote trouvee ce scan : ${bestDiscount !== null ? bestDiscount + '%' : 'aucune (0 annonce evaluable)'} (seuil requis: ${threshold}%)`);
