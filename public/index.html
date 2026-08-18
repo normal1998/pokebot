@@ -70,7 +70,7 @@
 
   /* ===== SLAB LABEL STAT STRIP ===== */
   .slab-strip {
-    display: grid; grid-template-columns: repeat(4, 1fr);
+    display: grid; grid-template-columns: repeat(5, 1fr);
     border: 1px solid var(--border-light); border-radius: 6px; overflow: hidden;
     background: var(--panel); margin-bottom: 24px;
   }
@@ -92,7 +92,7 @@
   .led-dot.on { background: var(--good); box-shadow: 0 0 6px rgba(79,216,146,0.6); }
   @media (max-width: 760px) {
     .slab-strip { grid-template-columns: repeat(2, 1fr); }
-    .slab-cell:nth-child(2) { border-right: none; }
+    .slab-cell:nth-child(2), .slab-cell:nth-child(4) { border-right: none; }
   }
 
   /* ===== LAYOUT ===== */
@@ -198,11 +198,10 @@
   .deal-remove {
     position: absolute; top: 10px; right: 10px; background: var(--panel-2);
     border: 1px solid var(--border-light); color: var(--muted-dim); border-radius: 5px;
-    width: 22px; height: 22px; cursor: pointer; font-size: 12px; line-height: 1;
-    display: flex; align-items: center; justify-content: center; opacity: 0; transition: opacity 0.15s;
+    width: 24px; height: 24px; cursor: pointer; font-size: 13px; line-height: 1;
+    display: flex; align-items: center; justify-content: center;
   }
   .deal-card { position: relative; }
-  .deal-card:hover .deal-remove { opacity: 1; }
   .deal-remove:hover { color: var(--bad); border-color: var(--bad); }
 
   /* Filtre par veille */
@@ -279,6 +278,10 @@
       <div class="slab-cell">
         <span class="label">Statut</span>
         <span class="value" id="stat-status"><span class="led-dot"></span><span class="unit">chargement…</span></span>
+      </div>
+      <div class="slab-cell">
+        <span class="label">Source prix</span>
+        <span class="value" id="stat-pricesource"><span class="led-dot"></span><span class="unit">chargement…</span></span>
       </div>
     </div>
   </header>
@@ -693,6 +696,9 @@ async function renderStatus() {
     const allConfigured = status.ebayConfigured && status.anthropicConfigured;
     statusEl.innerHTML = `<span class="led-dot ${allConfigured ? 'on' : ''}"></span><span class="unit">${allConfigured ? 'Opérationnel' : 'Config incomplète'}</span>`;
     document.getElementById('stat-scan').innerHTML = formatRelativeTime(status.lastScanAt) + (status.lastScanError ? ' <span class="unit" style="color:#E4574C;">⚠</span>' : '');
+
+    const priceSourceEl = document.getElementById('stat-pricesource');
+    priceSourceEl.innerHTML = `<span class="led-dot ${status.priceTrackerConfigured ? 'on' : ''}"></span><span class="unit">${status.priceTrackerConfigured ? 'Officielle' : 'Estimation eBay'}</span>`;
 
     if (!allConfigured && chatLog.children.length === 0) {
       addMessage(

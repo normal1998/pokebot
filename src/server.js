@@ -45,6 +45,7 @@ app.get('/api/status', (req, res) => {
     anthropicConfigured: Boolean(process.env.ANTHROPIC_API_KEY),
     emailConfigured: Boolean(process.env.SMTP_USER && process.env.SMTP_PASS && process.env.ALERT_EMAIL_TO),
     telegramConfigured: Boolean(process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_CHAT_ID),
+    priceTrackerConfigured: Boolean(process.env.POKEMONPRICETRACKER_API_KEY),
     schedulerRunning: Boolean(process.env.EBAY_CLIENT_ID && process.env.ANTHROPIC_API_KEY),
     scanIntervalMinutes: Number(process.env.SCAN_INTERVAL_MINUTES || 15),
     defaultThresholdPercent: config.defaultThresholdPercent,

@@ -24,7 +24,11 @@ async function scanWatch(watch) {
     const threshold = watch.thresholdPercent || storage.getConfig().defaultThresholdPercent;
     // minSampleSize a 3 : avec le grade et le grader desormais stricts (jamais melanges),
     // 3 annonces vraiment comparables donnent un prix de reference fiable.
-    const marketPrices = getGroupedMarketPrices(listings, { minSampleSize: 3 });
+    // Pour une veille ciblee (carte precise), le volume d'annonces est naturellement plus
+    // faible qu'une veille large : 2 annonces vraiment comparables suffisent a estimer un
+    // prix de reference correct. Pour une veille large, on garde 3 (plus de marge d'erreur
+    // possible avec le regroupement par similarite de titre sur un gros volume).
+    const marketPrices = getGroupedMarketPrices(listings, { minSampleSize: isBroadWatch ? 3 : 2 });
     const groupsWithPrice = [...marketPrices.values()].filter(v => v.marketPrice !== null).length;
     console.log(`[SCAN] -> ${groupsWithPrice}/${listings.length} annonce(s) avaient assez de comparables pour etre evaluees`);
 
