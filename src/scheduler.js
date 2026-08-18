@@ -62,6 +62,7 @@ async function scanWatch(watch) {
         if (official === undefined) {
           official = await priceTracker.getOfficialPriceForListing(listing, detectedGrader, detectedGrade);
           storage.setPriceTrackerCache(cacheKey, official || null);
+          console.log(`[PRICETRACKER] "${listing.title}" (grader detecte: ${detectedGrader || 'aucun'}, grade detecte: ${detectedGrade || 'aucun'}) -> ${official ? 'prix trouve: ' + official.officialMarketPrice + '€' : 'pas de correspondance ou pas de donnees pour ce grade'}`);
         }
         if (official && official.officialMarketPrice) {
           marketPrice = official.officialMarketPrice;

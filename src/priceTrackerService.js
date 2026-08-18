@@ -28,7 +28,10 @@ async function parseTitle(title) {
       },
       body: JSON.stringify({ title, options: { fuzzyMatching: true, maxSuggestions: 1, includeConfidence: true } }),
     });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      console.log(`[PRICETRACKER] parse-title a echoue (HTTP ${res.status})`);
+      return null;
+    }
     const json = await res.json();
     const match = json?.data?.matches?.[0];
     if (!match || !match.tcgPlayerId) return null;
@@ -58,7 +61,10 @@ async function getOfficialMarketData(tcgPlayerId, grader, grade) {
     const res = await fetch(`${BASE_URL}/cards?${params.toString()}`, {
       headers: { Authorization: `Bearer ${process.env.POKEMONPRICETRACKER_API_KEY}` },
     });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      console.log(`[PRICETRACKER] cards a echoue (HTTP ${res.status})`);
+      return null;
+    }
     const json = await res.json();
     const card = Array.isArray(json.data) ? json.data[0] : json.data;
     if (!card) return null;
@@ -96,14 +102,26 @@ async function getOfficialMarketData(tcgPlayerId, grader, grade) {
 // le vrai prix de marche officiel. Retourne null si pas configure / pas trouve / pas assez confiant.
 async function getOfficialPriceForListing(listing, detectedGrader, detectedGrade) {
   const parsed = await parseTitle(listing.title);
-  if (!parsed) return null;
-  if (parsed.confidence !== null && parsed.confidence < 0.5) return null; // trop incertain, on ne s'y fie pas
+  if (!parsed) {
+    console.log(`[PRICETRACKER] Aucune carte identifiee pour le titre "${listing.title}"`);
+    return null;
+  }
+  if (parsed.confidence !== null && parsed.confidence < 0.5) {
+    console.log(`[PRICETRACKER] Correspondance trouvee mais confiance trop faible (${parsed.confidence}) pour "${listing.title}"`);
+    return null;
+  }
 
   const grader = parsed.parsedGrader || detectedGrader;
   const grade = parsed.parsedGrade || detectedGrade;
-  if (!grader || !grade) return null;
+  if (!grader || !grade) {
+    console.log(`[PRICETRACKER] Carte identifiee (tcgPlayerId ${parsed.tcgPlayerId}) mais grade/grader inconnu pour "${listing.title}"`);
+    return null;
+  }
 
   const marketData = await getOfficialMarketData(parsed.tcgPlayerId, grader, grade);
+  if (!marketData) {
+    console.log(`[PRICETRACKER] Carte identifiee (tcgPlayerId ${parsed.tcgPlayerId}) mais pas de donnees eBay pour ${grader} ${grade}`);
+  }
   return marketData;
 }
 
