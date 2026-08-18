@@ -97,11 +97,15 @@ app.post('/api/chat', async (req, res) => {
           return normalizedExisting === normalizedNew;
         });
 
+        // 0 est une valeur falsy en JS : "input.thresholdPercent" tout court ignorerait
+        // a tort un seuil explicitement mis a 0%. On teste donc null/undefined partout.
+        const hasThreshold = input.thresholdPercent !== null && input.thresholdPercent !== undefined;
+
         if (existing) {
           if (!existing.active) storage.setWatchActive(existing.id, true);
           if (input.maxPrice) storage.updateWatch(existing.id, { maxPrice: input.maxPrice });
-          if (input.thresholdPercent) storage.updateWatch(existing.id, { thresholdPercent: input.thresholdPercent });
-          reply = `Cette veille existe deja (${existing.cardName || 'toutes cartes gradees'}${existing.grader ? ' ' + existing.grader : ''}) — je l'ai reactivee${input.maxPrice ? ' et mis a jour le budget' : ''}${input.thresholdPercent ? ' (seuil ' + input.thresholdPercent + '%)' : ''} plutot que d'en creer une en double.`;
+          if (hasThreshold) storage.updateWatch(existing.id, { thresholdPercent: input.thresholdPercent });
+          reply = `Cette veille existe deja (${existing.cardName || 'toutes cartes gradees'}${existing.grader ? ' ' + existing.grader : ''}) — je l'ai reactivee${input.maxPrice ? ' et mis a jour le budget' : ''}${hasThreshold ? ' (seuil ' + input.thresholdPercent + '%)' : ''} plutot que d'en creer une en double.`;
           break;
         }
 
@@ -111,17 +115,20 @@ app.post('/api/chat', async (req, res) => {
           grader: input.grader || null,
           grade: input.grade || null,
           maxPrice: input.maxPrice || null,
-          thresholdPercent: input.thresholdPercent || null,
+          thresholdPercent: hasThreshold ? input.thresholdPercent : null,
         });
+        const appliedThreshold = (watch.thresholdPercent !== null && watch.thresholdPercent !== undefined)
+          ? watch.thresholdPercent
+          : storage.getConfig().defaultThresholdPercent;
         reply = watch.cardName
           ? `Nouvelle veille ajoutee : ${watch.cardName}`
             + `${watch.grader ? ' ' + watch.grader : ''}${watch.grade ? ' ' + watch.grade : ''}`
             + `${watch.maxPrice ? ', budget max ' + watch.maxPrice + ' EUR' : ''}`
-            + `. Seuil applique : ${watch.thresholdPercent || storage.getConfig().defaultThresholdPercent}% sous le prix marche (dis-moi "seuil a X%" pour le changer).`
+            + `. Seuil applique : ${appliedThreshold}% sous le prix marche (dis-moi "seuil a X%" pour le changer).`
           : `Veille large ajoutee : toutes les cartes Pokemon gradees`
             + `${watch.grader ? ' ' + watch.grader : ''}${watch.grade ? ' ' + watch.grade : ''}`
             + `${watch.maxPrice ? ', budget max ' + watch.maxPrice + ' EUR' : ''}`
-            + `. Seuil applique : ${watch.thresholdPercent || storage.getConfig().defaultThresholdPercent}% sous le prix marche (dis-moi "seuil a X%" pour le changer). `
+            + `. Seuil applique : ${appliedThreshold}% sous le prix marche (dis-moi "seuil a X%" pour le changer). `
             + `Le bot compare chaque carte a des cartes similaires (jamais a une carte differente) avant de l'evaluer.`;
         break;
       }

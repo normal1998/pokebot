@@ -21,7 +21,11 @@ async function scanWatch(watch) {
     console.log(`[SCAN] "${watch.cardName || watch.grader || 'toutes cartes'}" -> ${listings.length} annonce(s) trouvee(s) sur eBay`);
     if (!listings.length) return;
 
-    const threshold = watch.thresholdPercent || storage.getConfig().defaultThresholdPercent;
+    // Attention : 0 est une valeur falsy en JS, donc "watch.thresholdPercent || default"
+    // ignorerait a tort un seuil explicitement mis a 0%. On verifie donc null/undefined.
+    const threshold = (watch.thresholdPercent !== null && watch.thresholdPercent !== undefined)
+      ? watch.thresholdPercent
+      : storage.getConfig().defaultThresholdPercent;
     // minSampleSize a 3 : avec le grade et le grader desormais stricts (jamais melanges),
     // 3 annonces vraiment comparables donnent un prix de reference fiable.
     // Pour une veille ciblee (carte precise), le volume d'annonces est naturellement plus

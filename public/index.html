@@ -480,7 +480,7 @@ function renderWatches(watches) {
     <div class="watch-item">
       <div>
         <div class="watch-name">${w.cardName ? escapeHtml(w.cardName) : 'Toutes cartes gradées'}${w.grade ? ' ' + escapeHtml(w.grade) : ''}</div>
-        <div class="watch-meta">${w.maxPrice ? 'Budget max ' + w.maxPrice + ' € · ' : ''}Seuil ${w.thresholdPercent || defaultThresholdPercent || '?'}%</div>
+        <div class="watch-meta">${w.maxPrice ? 'Budget max ' + w.maxPrice + ' € · ' : ''}Seuil ${(w.thresholdPercent !== null && w.thresholdPercent !== undefined) ? w.thresholdPercent : (defaultThresholdPercent !== null ? defaultThresholdPercent : '?')}%</div>
       </div>
       <div style="display:flex; align-items:center; gap:8px;">
         <span class="grader-chip ${graderChipClass(w.grader)}">${w.grader ? escapeHtml(w.grader) : 'Tous'}</span>
