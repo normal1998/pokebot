@@ -47,12 +47,19 @@ function getMarketPriceFromListings(listings) {
 // du titre est identique. Le grader et le grade sont donc des criteres de regroupement
 // A PART ENTIERE, jamais de simples "mots ignores".
 
+// IMPORTANT : "\bpsa\b" exige un caractere non-alphanumerique des DEUX cotes de "psa".
+// Or les vendeurs eBay collent tres souvent le grade directement au sigle, sans espace
+// ("PSA9", "PSA10", "BGS9.5"...). Dans ce cas "\b" apres "psa" ne matche jamais (un chiffre
+// est un caractere "de mot" en regex), et le grader n'etait donc JAMAIS detecte pour ces
+// titres-la -> l'annonce etait ensuite ecartee de toute evaluation. On remplace le "\b" de
+// fin par une negation explicite de lettre, qui autorise un chiffre ou une fin de chaine
+// juste apres, tout en excluant les faux positifs dans un mot plus long ("psalm", "psaload"...).
 const GRADER_PATTERNS = [
-  { key: 'PSA', regex: /\bpsa\b/i },
-  { key: 'BGS', regex: /\bbgs\b|beckett/i },
-  { key: 'CGC', regex: /\bcgc\b/i },
-  { key: 'SGC', regex: /\bsgc\b/i },
-  { key: 'ACE', regex: /\bace\b/i },
+  { key: 'PSA', regex: /\bpsa(?![a-z])/i },
+  { key: 'BGS', regex: /\bbgs(?![a-z])|beckett/i },
+  { key: 'CGC', regex: /\bcgc(?![a-z])/i },
+  { key: 'SGC', regex: /\bsgc(?![a-z])/i },
+  { key: 'ACE', regex: /\bace(?![a-z])/i },
 ];
 
 function detectGrader(title) {
@@ -63,12 +70,23 @@ function detectGrader(title) {
   return null;
 }
 
+// Cherche le grade dans une fenetre de texte APRES la mention du grader, plutot que de
+// n'accepter que des chiffres immediatement colles (regression du meme bug que ci-dessus :
+// "PSA GEM MT 10", "PSA Graded - 9", "PSA9" doivent tous matcher). On ne retient que les
+// nombres plausibles pour un grade (1 a 10, dixiemes autorises pour BGS/SGC type "9.5"),
+// pour eviter d'accrocher un prix ou une annee par erreur.
 function detectGrade(title, grader) {
   const t = title || '';
-  const graderWord = grader ? grader : '(psa|bgs|cgc|sgc|ace|beckett)';
-  const re = new RegExp(graderWord + '\\s*(\\d{1,2}(?:\\.\\d)?)', 'i');
-  const match = t.match(re);
-  if (match) return match[1];
+  const graderWord = grader ? grader.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') : '(psa|bgs|cgc|sgc|ace|beckett)';
+  const re = new RegExp(graderWord + '(?![a-z])', 'i');
+  const match = re.exec(t);
+  if (!match) return null;
+  const windowText = t.slice(match.index + match[0].length, match.index + match[0].length + 30);
+  const numMatches = windowText.match(/\d{1,2}(?:\.\d)?/g) || [];
+  for (const raw of numMatches) {
+    const val = parseFloat(raw);
+    if (val >= 1 && val <= 10) return raw;
+  }
   return null;
 }
 

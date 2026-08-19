@@ -6,6 +6,13 @@ const { notifyDeal } = require('./notifier');
 const priceTracker = require('./priceTrackerService');
 const storage = require('./storage');
 
+// Quota gratuit PokemonPriceTracker : 100 requetes/jour. On se garde une marge de securite
+// et on plafonne aussi le nombre de verifications par scan pour une veille large (elle peut
+// contenir des centaines d'annonces differentes ; sans plafond, une seule veille large
+// epuiserait tout le quota en un seul scan de 15 minutes).
+const MAX_PRICETRACKER_CALLS_PER_DAY = 90;
+const MAX_BROAD_PRICETRACKER_CALLS_PER_SCAN = 5;
+
 async function scanWatch(watch) {
   try {
     // Veille large (aucun nom de carte precis) : on recupere plus d'annonces
@@ -37,6 +44,11 @@ async function scanWatch(watch) {
     console.log(`[SCAN] -> ${groupsWithPrice}/${listings.length} annonce(s) avaient assez de comparables pour etre evaluees`);
 
     let bestDiscount = null;
+    // Compteur d'appels PokemonPriceTracker consommes PENDANT ce scan, pour une veille large
+    // uniquement (voir plus bas). Les annonces sont deja triees par prix croissant (tri eBay
+    // "price"), donc on consomme naturellement le budget sur les moins cheres en premier —
+    // exactement celles qui ont le plus de chances d'etre de vraies affaires.
+    let broadWatchCallsThisScan = 0;
 
     for (const listing of listings) {
       if (!listing.price) continue;
@@ -47,16 +59,21 @@ async function scanWatch(watch) {
 
       const ref = marketPrices.get(listing.listingId);
 
-      // GARDE-FOU CRITIQUE : si ni le grade ni le grader n'ont pu etre detectes (ni via les
-      // donnees officielles eBay, ni via le titre), on ne sait PAS si cette annonce est
-      // vraiment une carte gradee. On ne l'evalue jamais comme "affaire", meme si elle a ete
-      // groupee avec d'autres annonces similaires — sinon des cartes communes NON gradees
-      // se retrouvent comparees entre elles et ressortent comme de fausses "bonnes affaires".
-      if (!ref || !ref.grader || !ref.grade) continue;
+      // GARDE-FOU CRITIQUE : si le grader n'a pu etre detecte (ni via les donnees officielles
+      // eBay, ni via le titre), on ne sait PAS si cette annonce est vraiment une carte gradee.
+      // On ne l'evalue jamais comme "affaire" dans ce cas — sinon des cartes communes NON
+      // gradees se retrouvent comparees entre elles et ressortent comme de fausses "affaires".
+      if (!ref || !ref.grader) continue;
 
-      let marketPrice = ref.marketPrice;
-      let sampleSize = ref.sampleSize;
-      let comparablePrices = ref.comparablePrices || [];
+      // En revanche, si le GRADER est connu mais que le GRADE precis n'a pas ete detecte
+      // localement (regex insuffisante sur ce titre), on ne rejette plus l'annonce d'office :
+      // on ne fait juste PAS confiance au "prix marche" calcule localement (le cluster
+      // "grader connu / grade inconnu" peut melanger plusieurs grades differents, donc son
+      // prix median n'est pas fiable) et on laisse la source de prix officielle ci-dessous
+      // tenter d'identifier le grade exact elle-meme (methode plus fiable que la regex).
+      let marketPrice = ref.grade ? ref.marketPrice : null;
+      let sampleSize = ref.grade ? ref.sampleSize : 0;
+      let comparablePrices = ref.grade ? (ref.comparablePrices || []) : [];
       let officialSource = false;
       let priceHistory = [];
 
@@ -66,14 +83,28 @@ async function scanWatch(watch) {
       // elle n'a pas besoin de plusieurs annonces eBay actives, elle a sa propre base de
       // ventes passees. Mise en cache 24h par carte+grade pour ne pas gaspiller le quota
       // gratuit (100 requetes/jour) sur les memes cartes scannees toutes les 15 minutes.
-      if ((!marketPrice || sampleSize < 2) && !isBroadWatch && priceTracker.isConfigured()) {
+      //
+      // Pour une veille LARGE ("toutes cartes"), meme logique mais avec un DOUBLE plafond
+      // (par scan ET par jour), car une veille large peut contenir des centaines d'annonces
+      // toutes differentes : sans ca, elle epuiserait le quota gratuit en un seul scan et
+      // ne resterait jamais evaluable. Avant, elle etait simplement exclue de cette source
+      // de prix, ce qui la rendait quasi inutilisable en pratique.
+      const dailyCallsUsed = storage.getPriceTrackerCallsToday();
+      const canUseBroadBudget = isBroadWatch
+        && broadWatchCallsThisScan < MAX_BROAD_PRICETRACKER_CALLS_PER_SCAN
+        && dailyCallsUsed < MAX_PRICETRACKER_CALLS_PER_DAY;
+      if ((!marketPrice || sampleSize < 2) && (!isBroadWatch || canUseBroadBudget) && priceTracker.isConfigured()) {
         const detectedGrader = ref?.grader;
         const detectedGrade = ref?.grade;
-        const cacheKey = `${(watch.cardName || '').toLowerCase()}|${detectedGrader || '?'}|${detectedGrade || '?'}`;
+        const cacheKey = isBroadWatch
+          ? `listing|${listing.listingId}`
+          : `${(watch.cardName || '').toLowerCase()}|${detectedGrader || '?'}|${detectedGrade || '?'}`;
         let official = storage.getPriceTrackerCache(cacheKey);
         if (official === undefined) {
           official = await priceTracker.getOfficialPriceForListing(listing, detectedGrader, detectedGrade);
           storage.setPriceTrackerCache(cacheKey, official || null);
+          storage.incrementPriceTrackerCallsToday();
+          if (isBroadWatch) broadWatchCallsThisScan += 1;
           console.log(`[PRICETRACKER] "${listing.title}" (grader detecte: ${detectedGrader || 'aucun'}, grade detecte: ${detectedGrade || 'aucun'}) -> ${official ? 'prix trouve: ' + official.officialMarketPrice + '€' : 'pas de correspondance ou pas de donnees pour ce grade'}`);
         }
         if (official && official.officialMarketPrice) {
@@ -103,6 +134,7 @@ async function scanWatch(watch) {
             if (official === undefined) {
               official = await priceTracker.getOfficialPriceForListing(listing, ref?.grader, ref?.grade);
               storage.setPriceTrackerCache(listingCacheKey, official || null);
+              storage.incrementPriceTrackerCallsToday();
             }
             if (official && official.officialMarketPrice) {
               const revaluated = evaluateListing(listing, official.officialMarketPrice, threshold);

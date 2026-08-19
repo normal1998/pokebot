@@ -91,6 +91,25 @@ function setPriceTrackerCache(key, value) {
   db.get('priceTrackerCache').set(safeKey, { value, fetchedAt: new Date().toISOString() }).write();
 }
 
+// Compteur journalier d'appels a l'API PokemonPriceTracker (quota gratuit : 100/jour).
+// Sert a autoriser un usage LIMITE et control de cette API meme pour les veilles larges
+// ("toutes cartes"), qui sinon n'y avaient jamais acces (trop d'annonces a verifier).
+// Se reinitialise automatiquement chaque jour (cle = date du jour).
+function getPriceTrackerCallsToday() {
+  const today = new Date().toISOString().slice(0, 10);
+  const rec = db.get('config').get('priceTrackerUsage').value();
+  if (!rec || rec.date !== today) return 0;
+  return rec.count;
+}
+
+function incrementPriceTrackerCallsToday() {
+  const today = new Date().toISOString().slice(0, 10);
+  const rec = db.get('config').get('priceTrackerUsage').value();
+  const count = (rec && rec.date === today) ? rec.count + 1 : 1;
+  db.get('config').assign({ priceTrackerUsage: { date: today, count } }).write();
+  return count;
+}
+
 function setDefaultThreshold(thresholdPercent) {
   db.get('config').assign({ defaultThresholdPercent: thresholdPercent }).write();
 }
@@ -178,6 +197,8 @@ module.exports = {
   getConfig,
   getPriceTrackerCache,
   setPriceTrackerCache,
+  getPriceTrackerCallsToday,
+  incrementPriceTrackerCallsToday,
   setDefaultThreshold,
   setScanStatus,
 };
