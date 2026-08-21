@@ -64,6 +64,16 @@ async function searchActiveListings(watch, { limit = 50, offset = 0 } = {}) {
   const filters = [];
   if (watch.maxPrice) filters.push(`price:[..${watch.maxPrice}]`);
   filters.push('buyingOptions:{FIXED_PRICE|AUCTION}');
+  // CORRECTIF IMPORTANT : la categorie eBay utilisee (183454) contient en realite un
+  // melange de cartes GRADEES et de cartes BRUTES/accessoires -- ce n'est PAS une
+  // categorie exclusivement "cartes gradees" comme on le pensait. Jusqu'ici, on essayait
+  // de deviner apres coup (titre/regex) si chaque annonce etait bien gradee, ce qui
+  // echouait souvent (beaucoup de vendeurs ne mettent pas "PSA" clairement dans le titre),
+  // laissant trop peu d'annonces exploitables une fois le tri fait cote client.
+  // On demande maintenant a eBay de ne renvoyer QUE les objets ayant le condition
+  // structure officiel "Graded" (conditionId 2750) -- filtrage fait cote serveur eBay,
+  // bien plus fiable qu'une regex sur un texte libre mal renseigne par le vendeur.
+  filters.push('conditionIds:{2750}');
   if (filters.length) params.set('filter', filters.join(','));
 
   const marketplace = process.env.EBAY_MARKETPLACE || 'EBAY_US';
