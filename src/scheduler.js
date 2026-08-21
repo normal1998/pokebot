@@ -27,6 +27,16 @@ async function scanWatch(watch) {
     const groupsWithPrice = [...marketPrices.values()].filter(v => v.marketPrice !== null).length;
     console.log(`[SCAN] -> ${groupsWithPrice}/${listings.length} annonce(s) avaient assez de comparables pour etre evaluees`);
 
+    // DIAGNOSTIC TEMPORAIRE : on veut comprendre pourquoi le grader/grade n'est pas
+    // detecte sur la majorite des annonces. On log un echantillon de titres reels
+    // avec ce qui a ete detecte (ou pas), pour ajuster la detection si besoin.
+    // A retirer une fois le probleme identifie.
+    const sample = listings.slice(0, 8);
+    for (const l of sample) {
+      const ref = marketPrices.get(l.listingId);
+      console.log(`[DIAG] "${l.title}" | condition eBay: ${l.condition} | officialGrader: ${l.officialGrader || 'aucun'} | officialGrade: ${l.officialGrade || 'aucun'} | grader detecte: ${ref?.grader || 'AUCUN'} | grade detecte: ${ref?.grade || 'AUCUN'}`);
+    }
+
     let bestDiscount = null;
     let evaluatedCount = 0;
     let broadWatchCallsThisScan = 0;
